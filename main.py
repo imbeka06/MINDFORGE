@@ -22,81 +22,71 @@ if not os.getenv("OPENAI_API_KEY"):
     st.error("⚠️ OPENAI_API_KEY not found! Check your .env file.")
     st.stop()
 
-# --- 2. THEME MANAGER (FIXED) ---
+# --- 2. THEME MANAGER (VISIBILITY FIX) ---
 def apply_custom_theme(theme_name):
     """
-    Injects CSS to change colors based on selection.
+    Injects CSS to force text visibility and change colors.
     """
+    common_dark_css = """
+        /* FORCE ALL TEXT TO BE WHITE/LIGHT */
+        h1, h2, h3, h4, h5, h6, p, li, span, div, label {
+            color: #E0E0E0 !important;
+        }
+        /* INPUTS: Grey Background, White Text */
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea {
+            background-color: #2E303E !important;
+            color: #FFFFFF !important;
+            border: 1px solid #4A4D5A;
+        }
+        /* SELECT BOXES */
+        .stSelectbox > div > div > div {
+            background-color: #2E303E !important;
+            color: #FFFFFF !important;
+        }
+        /* SUCCESS MESSAGES */
+        .stSuccess {
+            background-color: #1B5E20 !important;
+            color: #E8F5E9 !important;
+        }
+        /* INFO MESSAGES */
+        .stInfo {
+            background-color: #0D47A1 !important;
+            color: #E3F2FD !important;
+        }
+    """
+
     if theme_name == "🌙 Dark Mode":
-        st.markdown("""
+        st.markdown(f"""
             <style>
-                /* Main Background */
-                .stApp {
-                    background-color: #0E1117;
-                    color: #FAFAFA;
-                }
-                /* Sidebar */
-                [data-testid="stSidebar"] {
-                    background-color: #262730;
-                }
-                /* FORCE Text Inputs to be Visible */
-                .stTextInput > div > div > input {
-                    background-color: #41444d !important;
-                    color: white !important;
-                    border: 1px solid #5a5d66;
-                }
-                /* FORCE Text Areas to be Visible */
-                .stTextArea > div > div > textarea {
-                    background-color: #41444d !important;
-                    color: white !important;
-                }
-                /* Select Boxes */
-                .stSelectbox > div > div > div {
-                    background-color: #41444d !important;
-                    color: white !important;
-                }
-                /* Text color for standard text */
-                p, h1, h2, h3, li, span {
-                    color: #FAFAFA !important;
-                }
+                /* Main Background: Pitch Black/Dark Grey */
+                .stApp {{ background-color: #0E1117; }}
+                [data-testid="stSidebar"] {{ background-color: #171923; }}
+                {common_dark_css}
             </style>
         """, unsafe_allow_html=True)
 
     elif theme_name == "🌊 Ocean Blue":
-        st.markdown("""
+        st.markdown(f"""
             <style>
-                /* Main Background - Deep Navy */
-                .stApp {
-                    background-color: #0f172a; 
-                    color: #e2e8f0;
-                }
-                /* Sidebar - Slightly Lighter Blue */
-                [data-testid="stSidebar"] {
-                    background-color: #1e293b;
-                }
-                /* Headers - Cyan/Teal Pop */
-                h1, h2, h3 {
-                    color: #38bdf8 !important;
-                }
-                /* Buttons */
-                .stButton > button {
-                    background-color: #3b82f6;
+                /* Main Background: Deep Navy */
+                .stApp {{ background-color: #0F172A; }}
+                /* Sidebar: Midnight Blue */
+                [data-testid="stSidebar"] {{ background-color: #1E293B; }}
+                /* Headers: Cyan Pop */
+                h1, h2, h3 {{ color: #38BDF8 !important; }}
+                /* Buttons: Bright Blue */
+                .stButton > button {{
+                    background-color: #3B82F6;
                     color: white;
                     border: none;
-                }
-                /* Inputs & Text Areas - Dark Blue Grey */
-                .stTextInput > div > div > input,
-                .stTextArea > div > div > textarea {
-                    background-color: #334155 !important;
-                    color: white !important;
-                    border: 1px solid #475569;
-                }
-                .stSelectbox > div > div > div {
-                    background-color: #334155 !important;
-                    color: white !important;
-                }
+                    font-weight: bold;
+                }}
+                {common_dark_css}
             </style>
         """, unsafe_allow_html=True)
+    
+    # Light Mode uses Streamlit defaults (Black text on White)
 
 # --- 3. SESSION STATE ---
 if "current_project" not in st.session_state: st.session_state.current_project = None
@@ -121,6 +111,8 @@ with st.sidebar:
     if selected_theme != st.session_state.theme:
         st.session_state.theme = selected_theme
         st.rerun()
+    
+    # Apply CSS immediately
     apply_custom_theme(st.session_state.theme)
     
     st.divider()
@@ -129,6 +121,7 @@ with st.sidebar:
     projects = load_projects()
     project_list = list(projects.keys())
     
+    # Selection Logic
     selected = st.selectbox(
         "📂 Select Unit:", 
         ["Select..."] + project_list,
@@ -144,9 +137,12 @@ with st.sidebar:
         st.session_state.last_quiz = None
         st.rerun()
 
-    if st.button("➕ Create Unit"):
-        new_name = st.text_input("Unit Name", "New Unit")
-        if new_name and new_name != "New Unit":
+    # --- CREATE UNIT (FIXED WITH FORM) ---
+    # Using a form prevents the app from refreshing while you type
+    with st.form("create_unit_form"):
+        new_name = st.text_input("New Unit Name")
+        submitted = st.form_submit_button("➕ Create Unit")
+        if submitted and new_name:
             create_project(new_name)
             st.success(f"Created {new_name}!")
             st.rerun()
@@ -154,11 +150,30 @@ with st.sidebar:
     st.divider()
 
     # --- MUSIC PLAYER ---
-    st.markdown("### 🎧 Study Zone")
-    music_on = st.toggle("🎵 Background Music")
-    if music_on:
-        st.video("https://www.youtube.com/watch?v=jfKfPfyJRdk") # Lofi Girl Stream
-        st.caption("Playing: Lofi Hip Hop Radio")
+    st.markdown("### 🎧 Study Playlist")
+    music_choice = st.radio("Vibe Check:", ["Off", "☕ Lofi Girl", "🎻 Dark Academia", "🎷 60s Jazz/Soul"], index=0)
+    
+    if music_choice == "☕ Lofi Girl":
+        st.video("https://www.youtube.com/watch?v=jfKfPfyJRdk")
+    elif music_choice == "🎻 Dark Academia":
+        # Classical Dark Vibe
+        st.video("https://www.youtube.com/watch?v=dpEPCVwf2z4") 
+    elif music_choice == "🎷 60s Jazz/Soul":
+        # Dark Blue / 60s Vibe
+        st.video("https://www.youtube.com/watch?v=Dx5qFacha3o")
+
+    st.divider()
+    
+    # --- CREDITS ---
+    st.markdown(
+        """
+        <div style="text-align: center; opacity: 0.7; font-size: 0.8em;">
+            Architect and Developer<br>
+            <strong>IMBEKA MUSA</strong>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # --- 5. MAIN CONTENT ---
 if st.session_state.current_project:
