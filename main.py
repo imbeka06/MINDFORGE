@@ -22,7 +22,7 @@ if not os.getenv("OPENAI_API_KEY"):
     st.error("⚠️ OPENAI_API_KEY not found! Check your .env file.")
     st.stop()
 
-# --- 2. THEME MANAGER (VISIBILITY FIX) ---
+# --- 2. THEME MANAGER ---
 def apply_custom_theme(theme_name):
     """
     Injects CSS to force text visibility and change colors.
@@ -85,8 +85,6 @@ def apply_custom_theme(theme_name):
                 {common_dark_css}
             </style>
         """, unsafe_allow_html=True)
-    
-    # Light Mode uses Streamlit defaults (Black text on White)
 
 # --- 3. SESSION STATE ---
 if "current_project" not in st.session_state: st.session_state.current_project = None
@@ -137,8 +135,7 @@ with st.sidebar:
         st.session_state.last_quiz = None
         st.rerun()
 
-    # --- CREATE UNIT (FIXED WITH FORM) ---
-    # Using a form prevents the app from refreshing while you type
+    # --- CREATE UNIT ---
     with st.form("create_unit_form"):
         new_name = st.text_input("New Unit Name")
         submitted = st.form_submit_button("➕ Create Unit")
@@ -151,16 +148,21 @@ with st.sidebar:
 
     # --- MUSIC PLAYER ---
     st.markdown("### 🎧 Study Playlist")
-    music_choice = st.radio("Vibe Check:", ["Off", "☕ Lofi Girl", "🎻 Dark Academia", "🎷 60s Jazz/Soul"], index=0)
+    music_choice = st.radio(
+        "Vibe Check:", 
+        ["Off", "☕ Lofi Girl", "🎻 Dark Academia", "🎷 60s Jazz/Soul", "🥀 Lana Del Rey"], 
+        index=0
+    )
     
     if music_choice == "☕ Lofi Girl":
-        st.video("https://www.youtube.com/watch?v=jfKfPfyJRdk")
+        st.video("https://www.youtube.com/watch?v=7ccH8u8fj8Y")
     elif music_choice == "🎻 Dark Academia":
-        # Classical Dark Vibe
-        st.video("https://www.youtube.com/watch?v=dpEPCVwf2z4") 
+        st.video("https://www.youtube.com/watch?v=D9km3yXmR8k") 
     elif music_choice == "🎷 60s Jazz/Soul":
-        # Dark Blue / 60s Vibe
-        st.video("https://www.youtube.com/watch?v=Dx5qFacha3o")
+        st.video("https://www.youtube.com/watch?v=e2A3_111fwc")
+    elif music_choice == "🥀 Lana Del Rey":
+        # Updated Working Link (Best of Playlist)
+        st.video("https://www.youtube.com/watch?v=5XJNg8x89yo")
 
     st.divider()
     
