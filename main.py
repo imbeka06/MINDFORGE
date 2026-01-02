@@ -8,11 +8,11 @@ load_dotenv()
 # Import Custom Modules
 from project_manager import load_projects, create_project, update_project_notes
 from pdf_processor import process_document, extract_text_from_pdf
-from video_processor import process_video  # <--- NEW
+from video_processor import process_video
 from ai_engine import (
     generate_summary, generate_mind_map, create_vector_db, 
     get_chat_response, generate_quiz, 
-    transcribe_audio, text_to_speech # <--- NEW IMPORTS
+    transcribe_audio, text_to_speech
 )
 
 st.set_page_config(page_title="MindForge AI", page_icon="🧠", layout="wide")
@@ -22,16 +22,103 @@ if not os.getenv("OPENAI_API_KEY"):
     st.error("⚠️ OPENAI_API_KEY not found! Check your .env file.")
     st.stop()
 
-# --- 2. SESSION STATE ---
+# --- 2. THEME MANAGER (NEW) ---
+def apply_custom_theme(theme_name):
+    """
+    Injects CSS to change colors based on selection.
+    """
+    if theme_name == "🌙 Dark Mode":
+        st.markdown("""
+            <style>
+                /* Main Background */
+                .stApp {
+                    background-color: #0E1117;
+                    color: #FAFAFA;
+                }
+                /* Sidebar */
+                [data-testid="stSidebar"] {
+                    background-color: #262730;
+                }
+                /* Input Fields */
+                .stTextInput > div > div > input {
+                    background-color: #262730;
+                    color: white;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+
+    elif theme_name == "🌊 Ocean Blue":
+        st.markdown("""
+            <style>
+                /* Main Background - Deep Navy */
+                .stApp {
+                    background-color: #0f172a; 
+                    color: #e2e8f0;
+                }
+                /* Sidebar - Slightly Lighter Blue */
+                [data-testid="stSidebar"] {
+                    background-color: #1e293b;
+                }
+                /* Headers - Cyan/Teal Pop */
+                h1, h2, h3 {
+                    color: #38bdf8 !important;
+                }
+                /* Success Messages */
+                .stSuccess {
+                    background-color: #064e3b !important;
+                    color: #a7f3d0 !important;
+                }
+                /* Buttons */
+                .stButton > button {
+                    background-color: #3b82f6;
+                    color: white;
+                    border: none;
+                }
+                /* Text Areas */
+                .stTextArea > div > div > textarea {
+                    background-color: #334155;
+                    color: white;
+                }
+                /* Inputs */
+                .stTextInput > div > div > input {
+                    background-color: #334155;
+                    color: white;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+    
+    # "☀️ Light Mode" does nothing (uses default Streamlit light theme)
+
+# --- 3. SESSION STATE ---
 if "current_project" not in st.session_state: st.session_state.current_project = None
 if "vector_store" not in st.session_state: st.session_state.vector_store = None
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "last_summary" not in st.session_state: st.session_state.last_summary = None
 if "last_mm" not in st.session_state: st.session_state.last_mm = None
 if "last_quiz" not in st.session_state: st.session_state.last_quiz = None
+# Theme state
+if "theme" not in st.session_state: st.session_state.theme = "☀️ Light Mode"
 
-# --- 3. SIDEBAR ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
+    # --- THEME SELECTOR ---
+    st.markdown("### 🎨 Appearance")
+    selected_theme = st.selectbox(
+        "Choose Theme:", 
+        ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"],
+        index=["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"].index(st.session_state.theme)
+    )
+    
+    # Apply theme immediately if changed
+    if selected_theme != st.session_state.theme:
+        st.session_state.theme = selected_theme
+        st.rerun()
+    
+    apply_custom_theme(st.session_state.theme)
+    
+    st.divider()
+
+    # --- PROJECT MANAGER ---
     st.title("📂 Learning Units")
     projects = load_projects()
     project_list = list(projects.keys())
@@ -59,7 +146,7 @@ with st.sidebar:
             st.success(f"Created {new_name}!")
             st.rerun()
 
-# --- 4. MAIN CONTENT ---
+# --- 5. MAIN CONTENT ---
 if st.session_state.current_project:
     project_data = projects[st.session_state.current_project]
     st.title(f"📚 Unit: {st.session_state.current_project}")
@@ -70,7 +157,6 @@ if st.session_state.current_project:
     with tab1:
         st.subheader("Add Learning Material")
         
-        # Choice: PDF or YouTube
         upload_type = st.radio("Source Type:", ["📄 PDF Document", "🎥 YouTube Video"], horizontal=True)
         
         doc_data = None
@@ -95,7 +181,6 @@ if st.session_state.current_project:
                     if not doc_data:
                         st.error("Could not fetch transcript. Video might not have captions.")
 
-        # Common AI Processing for both PDF and Video
         if doc_data:
             summary = generate_summary(doc_data['chunks'][0])
             mm_data = generate_mind_map(doc_data['chunks'][0])
@@ -153,16 +238,13 @@ if st.session_state.current_project:
     with tab4:
         st.subheader("Chat with your Content")
         
-        # 1. Voice Input (New)
         audio_val = st.audio_input("🎙️ Record Voice Question")
         
         if audio_val:
-            # Transcribe
             with st.spinner("Listening..."):
                 transcription = transcribe_audio(audio_val)
                 if transcription:
                     st.info(f"You said: '{transcription}'")
-                    # Auto-submit as prompt
                     prompt = transcription
                 else:
                     prompt = None
@@ -173,23 +255,17 @@ if st.session_state.current_project:
             st.warning("Please Analyze content in Tab 1 first.")
         
         elif prompt:
-            # User Message
             st.session_state.chat_history.append({"role": "user", "content": prompt})
             
-            # AI Response
             with st.spinner("Thinking..."):
                 response_text = get_chat_response(prompt, st.session_state.vector_store)
             
             st.session_state.chat_history.append({"role": "assistant", "content": response_text})
-            
-            # Text-to-Speech Generation
             audio_response = text_to_speech(response_text)
         
-        # Display History
         for i, msg in enumerate(st.session_state.chat_history):
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-                # Play audio for the latest assistant message
                 if msg["role"] == "assistant" and i == len(st.session_state.chat_history) - 1:
                      if 'audio_response' in locals() and audio_response:
                          st.audio(audio_response, format="audio/mp3")
@@ -198,29 +274,13 @@ if st.session_state.current_project:
     with tab5:
         if st.button("Generate New Quiz"):
             with st.spinner("Drafting..."):
-                # Use whatever text is in the first chunk of the vector store
-                if st.session_state.vector_store:
-                     # Hack: we re-analyze the last processed chunk stored in memory would be better,
-                     # but for MVP we will assume the user just analyzed something.
-                     # We will pull from the document logic in a real app, but here:
-                     if st.session_state.last_summary: 
-                         # Use the summary context to generate quiz if full text isn't handy
-                         # Ideally, we pass text. For now, let's ask user to re-analyze for quiz or use cached text.
-                         st.info("Using recent context for quiz...")
-                         # In this simple MVP, we need the text. 
-                         # Let's prompt user to re-analyze if we lost the text variable.
-                         pass
-                
-                # Simplified: Just grab the file again
                 files = [f for f in os.listdir(project_data['path']) if f.endswith('.pdf')]
                 if files:
                     doc_path = os.path.join(project_data['path'], files[0])
                     full_text = extract_text_from_pdf(doc_path)
                     st.session_state.last_quiz = generate_quiz(full_text[:4000])
                 else:
-                    # Check for video text? 
-                    # For MVP, let's just say "Please upload PDF for Quiz" or expand logic later.
-                    st.warning("Quiz currently supports PDFs. Video quiz coming soon.")
+                    st.warning("Quiz currently supports PDFs only.")
 
         if st.session_state.last_quiz:
             st.markdown(st.session_state.last_quiz)
