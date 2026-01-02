@@ -1,6 +1,8 @@
 import os
 import json
+import io
 from dotenv import load_dotenv
+from gtts import gTTS
 
 # Core LangChain imports
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -11,31 +13,33 @@ from langchain_core.documents import Document
 # Load environment variables
 load_dotenv()
 
-# Global variable to store startup errors for debugging
+# Global variables
 init_error = None
 embeddings = None
 llm = None
+client = None # Direct OpenAI client for Whisper
 
 try:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        # Try to be helpful if the key is missing
         print("⚠️ Warning: OPENAI_API_KEY not found in environment.")
     else:
-        # Attempt to start the AI
+        # 1. Initialize LangChain Components
         embeddings = OpenAIEmbeddings(api_key=api_key)
         llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.3, api_key=api_key)
+        
+        # 2. Initialize Direct OpenAI Client (For Whisper Audio)
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
 
 except Exception as e:
     init_error = str(e)
     print(f"DEBUG ERROR: {init_error}")
 
-# --- FUNCTIONS ---
+# --- TEXT FUNCTIONS ---
 
 def generate_summary(text_chunk):
-    if init_error: return f"⚠️ **AI Startup Error:** {init_error}"
     if not llm: return "⚠️ AI not running."
-    
     try:
         prompt = f"""
         You are an expert academic tutor. Summarize the following text clearly.
@@ -49,11 +53,10 @@ def generate_summary(text_chunk):
         response = llm.invoke(prompt)
         return response.content
     except Exception as e:
-        return f"⚠️ Error during summarization: {str(e)}"
+        return f"⚠️ Error: {str(e)}"
 
 def generate_mind_map(text_chunk):
     if not llm: return {"nodes": [], "edges": []}
-
     try:
         prompt = f"""
         Analyze the text and identify core concepts and relationships.
@@ -63,11 +66,9 @@ def generate_mind_map(text_chunk):
         TEXT: {text_chunk[:3000]}
         """
         response = llm.invoke(prompt)
-        # Clean cleanup
         content = response.content.replace("```json", "").replace("```", "").strip()
         return json.loads(content)
-    except Exception as e:
-        print(f"Mind Map Error: {e}")
+    except:
         return {"nodes": [], "edges": []}
 
 def create_vector_db(chunks):
@@ -81,14 +82,10 @@ def create_vector_db(chunks):
         return None
 
 def get_chat_response(query, vector_store):
-    if init_error: return f"System Error: {init_error}"
     if not llm or not vector_store: return "AI is not ready."
-
     try:
         qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=vector_store.as_retriever()
+            llm=llm, chain_type="stuff", retriever=vector_store.as_retriever()
         )
         response = qa_chain.invoke(query)
         return response["result"]
@@ -96,26 +93,54 @@ def get_chat_response(query, vector_store):
         return f"Chat Error: {str(e)}"
 
 def generate_quiz(text_chunk):
-    """Generates a 3-question MCQ quiz."""
     if not llm: return "AI not ready."
-    
-    prompt = f"""
-    Create a mini-quiz with 3 multiple-choice questions based on this text.
-    Format the output EXACTLY like this:
-    
-    Q1: [Question]
-    A) [Option]
-    B) [Option]
-    C) [Option]
-    D) [Option]
-    Answer: [Correct Letter]
-    
-    (Repeat for Q2 and Q3)
-    
-    TEXT: {text_chunk[:3000]}
-    """
     try:
+        prompt = f"""
+        Create a mini-quiz with 3 multiple-choice questions based on this text.
+        Format output EXACTLY like this:
+        Q1: [Question]
+        A) [Option]
+        B) [Option]
+        C) [Option]
+        D) [Option]
+        Answer: [Correct Letter]
+        (Repeat for Q2, Q3)
+        TEXT: {text_chunk[:3000]}
+        """
         response = llm.invoke(prompt)
         return response.content
+    except:
+        return "Quiz generation failed."
+
+# --- NEW: AUDIO FUNCTIONS ---
+
+def transcribe_audio(audio_file):
+    """
+    Uses OpenAI Whisper to convert Speech -> Text.
+    """
+    if not client: return None
+    try:
+        # OpenAI Whisper API expects a file-like object with a name
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1", 
+            file=audio_file
+        )
+        return transcript.text
     except Exception as e:
-        return f"Quiz Error: {str(e)}"
+        print(f"Whisper Error: {e}")
+        return None
+
+def text_to_speech(text):
+    """
+    Uses Google TTS to convert Text -> Audio Bytes.
+    """
+    try:
+        # Generate audio in memory (no file saved)
+        tts = gTTS(text=text, lang='en')
+        mp3_fp = io.BytesIO()
+        tts.write_to_fp(mp3_fp)
+        mp3_fp.seek(0)
+        return mp3_fp
+    except Exception as e:
+        print(f"TTS Error: {e}")
+        return None
