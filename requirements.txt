@@ -1,0 +1,8 @@
+streamlit
+openai
+langchain
+pymupdf             # PDF Processing
+arxiv               # ArXiv API wrapper
+duckduckgo-search   # for general web resource links
+python-dotenv
+pandas              # Data handling
