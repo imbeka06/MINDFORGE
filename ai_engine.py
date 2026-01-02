@@ -17,7 +17,7 @@ load_dotenv()
 init_error = None
 embeddings = None
 llm = None
-client = None # Direct OpenAI client for Whisper
+client = None 
 
 try:
     api_key = os.getenv("OPENAI_API_KEY")
@@ -71,15 +71,46 @@ def generate_mind_map(text_chunk):
     except:
         return {"nodes": [], "edges": []}
 
-def create_vector_db(chunks):
+# --- PERSISTENCE FUNCTIONS (MEMORY FIX) ---
+
+def create_vector_db(chunks, save_path=None):
+    """
+    Creates a vector DB and optionally saves it to disk.
+    """
     if not embeddings: return None
     try:
         docs = [Document(page_content=chunk) for chunk in chunks]
         vector_store = FAISS.from_documents(docs, embeddings)
+        
+        # SAVE TO DISK if a path is provided
+        if save_path:
+            # We create a subfolder called "vector_store"
+            vs_path = os.path.join(save_path, "vector_store")
+            vector_store.save_local(vs_path)
+            print(f"✅ Memory saved to {vs_path}")
+            
         return vector_store
     except Exception as e:
         print(f"Vector DB Error: {e}")
         return None
+
+def load_vector_db(load_path):
+    """
+    Loads a saved vector DB from disk.
+    """
+    if not embeddings: return None
+    vs_path = os.path.join(load_path, "vector_store")
+    
+    if os.path.exists(vs_path):
+        try:
+            # Allow dangerous deserialization is required for local files
+            vector_store = FAISS.load_local(vs_path, embeddings, allow_dangerous_deserialization=True)
+            print(f"✅ Memory loaded from {vs_path}")
+            return vector_store
+        except Exception as e:
+            print(f"Failed to load memory: {e}")
+            return None
+    return None
 
 def get_chat_response(query, vector_store):
     if not llm or not vector_store: return "AI is not ready."
@@ -93,34 +124,35 @@ def get_chat_response(query, vector_store):
         return f"Chat Error: {str(e)}"
 
 def generate_quiz(text_chunk):
-    if not llm: return "AI not ready."
+    """Generates an interactive JSON quiz."""
+    if not llm: return []
     try:
         prompt = f"""
         Create a mini-quiz with 3 multiple-choice questions based on this text.
-        Format output EXACTLY like this:
-        Q1: [Question]
-        A) [Option]
-        B) [Option]
-        C) [Option]
-        D) [Option]
-        Answer: [Correct Letter]
-        (Repeat for Q2, Q3)
+        Output ONLY raw JSON (no markdown). The format must be a list of objects:
+        [
+            {{
+                "question": "Question text here?",
+                "options": ["Option A", "Option B", "Option C", "Option D"],
+                "answer": "Option B"
+            }},
+            ...
+        ]
+        
         TEXT: {text_chunk[:3000]}
         """
         response = llm.invoke(prompt)
-        return response.content
-    except:
-        return "Quiz generation failed."
+        content = response.content.replace("```json", "").replace("```", "").strip()
+        return json.loads(content)
+    except Exception as e:
+        print(f"Quiz Error: {e}")
+        return []
 
-# --- NEW: AUDIO FUNCTIONS ---
+# --- AUDIO FUNCTIONS ---
 
 def transcribe_audio(audio_file):
-    """
-    Uses OpenAI Whisper to convert Speech -> Text.
-    """
     if not client: return None
     try:
-        # OpenAI Whisper API expects a file-like object with a name
         transcript = client.audio.transcriptions.create(
             model="whisper-1", 
             file=audio_file
@@ -131,11 +163,7 @@ def transcribe_audio(audio_file):
         return None
 
 def text_to_speech(text):
-    """
-    Uses Google TTS to convert Text -> Audio Bytes.
-    """
     try:
-        # Generate audio in memory (no file saved)
         tts = gTTS(text=text, lang='en')
         mp3_fp = io.BytesIO()
         tts.write_to_fp(mp3_fp)
