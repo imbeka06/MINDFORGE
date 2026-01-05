@@ -39,43 +39,38 @@ except Exception as e:
 
 def generate_deep_summary(chunks, model_name="gpt-3.5-turbo"):
     """
-    Reads the first 3 chunks (approx 15 pages) to create a comprehensive summary.
+    Reads the first 3 chunks to create a comprehensive summary.
+    Includes ERROR HANDLING to retry if connection fails.
     """
     llm = get_llm(model_name)
     if not llm: return "⚠️ AI not running."
     
-    # We combine the first 3 chunks to get a broader context
-    # (Adjust this number if you want it to read even more, but it costs more)
-    combined_text = "\n\n".join(chunks[:3])
-    
+    # Attempt 1: Deep Analysis (3 chunks)
     try:
+        combined_text = "\n\n".join(chunks[:3])
         prompt = f"""
-        You are an expert Research Analyst. Perform a Deep Analysis on the following document text.
-        Do not be vague. Extract concrete data, arguments, and findings.
-        
-        Format the output as:
+        You are an expert Research Analyst. Perform a Deep Analysis.
+        Format as:
         # 📑 Executive Report
-        
         ## 1. Core Thesis
-        (2-3 sentences explaining the main argument)
-        
-        ## 2. Key Findings & Data
-        * (Bullet point with specific details)
-        * (Bullet point with specific details)
-        * (Bullet point with specific details)
-        
+        ## 2. Key Findings
         ## 3. Critical Analysis
-        (Discuss methodology, strengths, or implications)
-        
         ## 4. Conclusion
-        (Final takeaway)
         
         TEXT DATA: {combined_text[:12000]}
         """
         response = llm.invoke(prompt)
         return response.content
     except Exception as e:
-        return f"⚠️ Error: {str(e)}"
+        print(f"Deep Summary Failed: {e}. Retrying with simpler version...")
+        
+        # Attempt 2: Simple Analysis (1 chunk) - Backup Plan
+        try:
+            prompt = f"Summarize this text clearly: {chunks[0][:4000]}"
+            response = llm.invoke(prompt)
+            return f"⚠️ **Note:** Connection was unstable, so a shorter summary was generated.\n\n{response.content}"
+        except Exception as e2:
+            return f"❌ Connection Error: {str(e2)}"
 
 def generate_mind_map(text_chunk, model_name="gpt-3.5-turbo"):
     llm = get_llm(model_name)
