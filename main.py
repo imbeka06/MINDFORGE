@@ -17,30 +17,68 @@ from ai_engine import (
 st.set_page_config(page_title="MindForge AI", page_icon="🧠", layout="wide")
 
 if not os.getenv("OPENAI_API_KEY"):
-    st.error("⚠️ OPENAI_API_KEY not found!")
+    st.error("⚠️ OPENAI_API_KEY not found! Check your .env file.")
     st.stop()
 
-# --- 2. HELPER FUNCTIONS ---
-def save_chat_history(project_path, history):
-    """Saves chat history to a JSON file."""
-    file_path = os.path.join(project_path, "chat_history.json")
-    with open(file_path, "w") as f:
-        json.dump(history, f)
-
-def load_chat_history(project_path):
-    """Loads chat history from JSON."""
-    file_path = os.path.join(project_path, "chat_history.json")
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
-            return json.load(f)
-    return []
-
+# --- 2. THEME MANAGER (FIXED) ---
 def apply_theme(theme_name):
-    css = "h1,h2,h3,p,div,span{color:#E0E0E0!important} .stTextInput input,.stTextArea textarea{background-color:#2E303E!important;color:white!important}"
+    """
+    Applies heavy-duty CSS to force theme changes.
+    """
+    # Common styles for Dark and Blue modes to ensure text is visible
+    common_css = """
+        /* Force Text Colors */
+        h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #E0E0E0 !important; }
+        
+        /* Input Fields (Background & Text) */
+        .stTextInput > div > div > input, 
+        .stTextArea > div > div > textarea {
+            background-color: #2E303E !important;
+            color: #FFFFFF !important;
+            border: 1px solid #4A4D5A;
+        }
+        
+        /* Dropdowns & Selectboxes */
+        .stSelectbox > div > div > div {
+            background-color: #2E303E !important;
+            color: #FFFFFF !important;
+        }
+        
+        /* Sidebar Text */
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] p {
+             color: #E0E0E0 !important;
+        }
+    """
+
     if theme_name == "🌙 Dark Mode":
-        st.markdown(f"<style>.stApp{{background-color:#0E1117}} {css}</style>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <style>
+                /* App Background */
+                .stApp {{ background-color: #0E1117; }}
+                /* Sidebar Background */
+                [data-testid="stSidebar"] {{ background-color: #171923; }}
+                {common_css}
+            </style>
+        """, unsafe_allow_html=True)
+        
     elif theme_name == "🌊 Ocean Blue":
-        st.markdown(f"<style>.stApp{{background-color:#0F172A}} h1,h2{{color:#38BDF8!important}} {css}</style>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <style>
+                /* App Background */
+                .stApp {{ background-color: #0F172A; }}
+                /* Sidebar Background */
+                [data-testid="stSidebar"] {{ background-color: #1E293B; }}
+                /* Header Highlights */
+                h1, h2 {{ color: #38BDF8 !important; }}
+                /* Buttons */
+                .stButton > button {{
+                    background-color: #3B82F6;
+                    color: white;
+                    border: none;
+                }}
+                {common_css}
+            </style>
+        """, unsafe_allow_html=True)
 
 # --- 3. SESSION STATE ---
 if "current_project" not in st.session_state: st.session_state.current_project = None
@@ -59,17 +97,29 @@ with st.sidebar:
     # Theme & Model
     col1, col2 = st.columns(2)
     with col1:
-        st.session_state.theme = st.selectbox("🎨 Theme", ["☀️ Light", "🌙 Dark", "🌊 Ocean"], index=0)
+        # We use a callback logic here to ensure theme applies instantly
+        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], index=["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"].index(st.session_state.theme))
+        if selected_theme != st.session_state.theme:
+            st.session_state.theme = selected_theme
+            st.rerun()
+            
     with col2:
         model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], index=0)
     
+    # APPLY THEME IMMEDIATELY
     apply_theme(st.session_state.theme)
     st.divider()
 
     # Project Selection
     projects = load_projects()
     project_list = list(projects.keys())
-    selected = st.selectbox("📂 Unit:", ["Select..."] + project_list)
+    
+    # Smart Selection Logic
+    index = 0
+    if st.session_state.current_project and st.session_state.current_project in project_list:
+        index = project_list.index(st.session_state.current_project) + 1
+        
+    selected = st.selectbox("📂 Unit:", ["Select..."] + project_list, index=index)
     
     # INTELLIGENT LOAD (MEMORY + CHAT HISTORY)
     if selected != "Select..." and selected != st.session_state.current_project:
@@ -81,14 +131,16 @@ with st.sidebar:
         st.session_state.vector_store = loaded_vs if loaded_vs else None
         
         # Load History
+        from main import load_chat_history # Self-import helper
         st.session_state.chat_history = load_chat_history(path)
         st.toast(f"Loaded {selected}")
         st.rerun()
 
     # Create Unit
     with st.form("new_unit"):
-        if st.form_submit_button("➕ New Unit") and (name := st.text_input("Name")):
-            create_project(name)
+        new_name = st.text_input("Name")
+        if st.form_submit_button("➕ New Unit") and new_name:
+            create_project(new_name)
             st.rerun()
     
     # Music
@@ -105,6 +157,17 @@ with st.sidebar:
     
     st.markdown("<div style='text-align:center;font-size:0.8em;opacity:0.7'>Dev: IMBEKA MUSA</div>", unsafe_allow_html=True)
 
+# Helper Functions (Moved below imports usually, but kept here for logical flow in copy-paste)
+def save_chat_history(project_path, history):
+    file_path = os.path.join(project_path, "chat_history.json")
+    with open(file_path, "w") as f: json.dump(history, f)
+
+def load_chat_history(project_path):
+    file_path = os.path.join(project_path, "chat_history.json")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f: return json.load(f)
+    return []
+
 # --- 5. MAIN APP ---
 if st.session_state.current_project:
     p_data = projects[st.session_state.current_project]
@@ -112,7 +175,7 @@ if st.session_state.current_project:
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📂 Upload", "📝 Notes", "🗺️ Map", "💬 Chat", "🎓 Quiz", "🔍 Research"])
 
-    # TAB 1: UPLOAD (Updated for Word/Txt)
+    # TAB 1: UPLOAD
     with tab1:
         st.info(f"Using {model_choice} for analysis.")
         src = st.radio("Type:", ["📄 File (PDF/DOCX/TXT)", "🎥 YouTube"], horizontal=True)
@@ -125,7 +188,7 @@ if st.session_state.current_project:
                 with open(path, "wb") as w: w.write(f.getbuffer())
                 st.success(f"Saved: {f.name}")
                 if st.button("🧠 Deep Analyze"):
-                    with st.spinner("Reading multiple pages..."):
+                    with st.spinner("Reading multiple pages... (This may take 30s)"):
                         doc_data = process_document(path)
         else:
             url = st.text_input("Link:")
@@ -196,7 +259,6 @@ if st.session_state.current_project:
     # TAB 5: QUIZ
     with tab5:
         if st.button("New Quiz"):
-            # Use cached summary text context if file logic gets complex
             if st.session_state.last_summary:
                 st.session_state.last_quiz = generate_quiz(st.session_state.last_summary, model_choice)
         
@@ -210,7 +272,7 @@ if st.session_state.current_project:
                     else: st.error(f"Wrong. It was {q['answer']}")
                 st.divider()
 
-    # TAB 6: RESEARCH (NEW)
+    # TAB 6: RESEARCH
     with tab6:
         st.subheader("🔎 Academic Search (ArXiv)")
         topic = st.text_input("Enter research topic:")
