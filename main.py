@@ -52,67 +52,65 @@ with st.sidebar:
     # Theme & Model
     col1, col2 = st.columns(2)
     with col1:
-        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], key="theme_selector")
+        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], key="theme_selector_unique")
         if selected_theme != st.session_state.theme:
             st.session_state.theme = selected_theme
             st.rerun()
     with col2:
         if "model_choice" not in st.session_state: st.session_state.model_choice = "gpt-3.5-turbo"
-        st.session_state.model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], key="model_selector")
+        st.session_state.model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], key="model_selector_unique")
     
     apply_theme(st.session_state.theme)
     st.divider()
 
-    # --- PROJECT MANAGER (FIXED LOGIC) ---
+    # --- PROJECT MANAGER ---
     projects = load_projects()
     project_list = list(projects.keys())
     
-    # 1. The "Select Unit" Dropdown
-    # We default to "Select..." so nothing auto-loads
+    # 1. UNIT SELECTION DROP DOWN
     selected_option = st.selectbox(
         "📂 Select Unit:", 
         ["Select..."] + project_list, 
-        key="unit_main_select"
+        key="unit_main_select_unique"
     )
     
-    # 2. Action Zone (Open or Delete)
+    # 2. ACTION BUTTONS (Only appear if a unit is selected)
     if selected_option != "Select...":
-        st.markdown(f"**Action for: {selected_option}**")
-        
-        c1, c2 = st.columns(2)
+        col_open, col_del = st.columns(2)
         
         # OPEN BUTTON
-        with c1:
-            if st.button("🚀 OPEN", type="primary", use_container_width=True):
+        with col_open:
+            if st.button("🚀 OPEN", type="primary", use_container_width=True, key="btn_open_unit"):
                 st.session_state.current_project = selected_option
                 
-                # Load Data ONLY when button is clicked
+                # Load Data immediately
                 path = projects[selected_option]['path']
                 st.session_state.vector_store = load_vector_db(path)
-                
                 from main import load_chat_history
                 st.session_state.chat_history = load_chat_history(path)
                 
-                st.toast(f"Loaded {selected_option}")
+                st.toast(f"Opening {selected_option}...")
                 st.rerun()
 
         # DELETE BUTTON
-        with c2:
-            if st.button("🗑️ DELETE", type="secondary", use_container_width=True):
-                # Perform Delete
+        with col_del:
+            if st.button("🗑️ DELETE", type="secondary", use_container_width=True, key="btn_delete_unit"):
+                # 1. Delete the folder
                 delete_project(selected_option)
                 
-                # Reset State immediately
-                st.session_state.current_project = None
-                st.session_state.vector_store = None
-                st.session_state.chat_history = []
+                # 2. Reset the session state so we don't try to load a dead project
+                if st.session_state.current_project == selected_option:
+                    st.session_state.current_project = None
+                    st.session_state.vector_store = None
+                    st.session_state.chat_history = []
                 
+                # 3. Force Rerun to refresh the dropdown list instantly
                 st.success(f"Deleted {selected_option}")
-                st.rerun() # This refreshes the app so the list updates instantly
+                st.rerun()
 
-    # 3. Create New Unit
+    # 3. CREATE NEW UNIT
     with st.expander("➕ Create New Unit"):
-        with st.form("create_unit_form"):
+        with st.form("create_unit_form_unique"):
             new_name = st.text_input("Unit Name")
             if st.form_submit_button("Create") and new_name:
                 create_project(new_name)
@@ -122,7 +120,7 @@ with st.sidebar:
     
     # --- MUSIC PLAYER ---
     st.markdown("### 🎧 Study Playlist")
-    music = st.radio("Vibe", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"], key="music_selector")
+    music = st.radio("Vibe", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"], key="music_selector_unique")
     
     links = {
         "☕ Lofi": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
@@ -146,7 +144,8 @@ def load_chat_history(project_path):
         with open(file_path, "r") as f: return json.load(f)
     return []
 
-# --- 5. MAIN APP ---
+# --- 5. MAIN APP CONTENT ---
+# Only show the main app if a valid project is currently loaded
 if st.session_state.current_project and st.session_state.current_project in projects:
     p_data = projects[st.session_state.current_project]
     st.title(f"📚 {st.session_state.current_project}")
@@ -280,5 +279,6 @@ if st.session_state.current_project and st.session_state.current_project in proj
                         st.markdown(f"[📥 Download PDF]({r['pdf_url']})")
 
 elif st.session_state.current_project is None:
-    # This is the "Blank Slate" screen when no unit is open
-    st.info("👈 Please select a Unit from the sidebar and click 'OPEN'.")
+    # Blank State Page
+    st.markdown("## 👋 Welcome to MindForge AI")
+    st.info("👈 Please select a Unit from the sidebar and click **'ROCKET OPEN'** to begin.")
