@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import json
+import shutil
 from dotenv import load_dotenv
 
 # --- 1. SETUP ---
@@ -48,68 +49,80 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/brain--v1.png", width=50)
     st.markdown("## MindForge AI")
     
-    # Theme & Model (Added KEYS to prevent DuplicateID error)
+    # Theme & Model
     col1, col2 = st.columns(2)
     with col1:
-        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], key="sidebar_theme")
+        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], key="theme_selector")
         if selected_theme != st.session_state.theme:
             st.session_state.theme = selected_theme
             st.rerun()
     with col2:
-        # Saving model to session state to prevent slow switching
         if "model_choice" not in st.session_state: st.session_state.model_choice = "gpt-3.5-turbo"
-        st.session_state.model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], key="sidebar_model")
+        st.session_state.model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], key="model_selector")
     
     apply_theme(st.session_state.theme)
     st.divider()
 
-    # Project Manager
+    # --- PROJECT MANAGER (FIXED LOGIC) ---
     projects = load_projects()
     project_list = list(projects.keys())
     
-    # Unit Selector (Added KEY)
-    idx = 0
-    if st.session_state.current_project in project_list:
-        idx = project_list.index(st.session_state.current_project) + 1
+    # 1. The "Select Unit" Dropdown
+    # We default to "Select..." so nothing auto-loads
+    selected_option = st.selectbox(
+        "📂 Select Unit:", 
+        ["Select..."] + project_list, 
+        key="unit_main_select"
+    )
     
-    selected = st.selectbox("📂 Unit:", ["Select..."] + project_list, index=idx, key="sidebar_unit_select")
-    
-    # Load Unit Logic
-    if selected != "Select..." and selected != st.session_state.current_project:
-        st.session_state.current_project = selected
-        path = projects[selected]['path']
-        loaded_vs = load_vector_db(path)
-        st.session_state.vector_store = loaded_vs if loaded_vs else None
+    # 2. Action Zone (Open or Delete)
+    if selected_option != "Select...":
+        st.markdown(f"**Action for: {selected_option}**")
         
-        # Load Chat History
-        from main import load_chat_history
-        st.session_state.chat_history = load_chat_history(path)
-        st.toast(f"Loaded {selected}")
-        st.rerun()
+        c1, c2 = st.columns(2)
+        
+        # OPEN BUTTON
+        with c1:
+            if st.button("🚀 OPEN", type="primary", use_container_width=True):
+                st.session_state.current_project = selected_option
+                
+                # Load Data ONLY when button is clicked
+                path = projects[selected_option]['path']
+                st.session_state.vector_store = load_vector_db(path)
+                
+                from main import load_chat_history
+                st.session_state.chat_history = load_chat_history(path)
+                
+                st.toast(f"Loaded {selected_option}")
+                st.rerun()
 
-    # Create Unit
-    with st.expander("➕ New Unit"):
-        with st.form("new_unit_form"):
-            new_name = st.text_input("Name")
+        # DELETE BUTTON
+        with c2:
+            if st.button("🗑️ DELETE", type="secondary", use_container_width=True):
+                # Perform Delete
+                delete_project(selected_option)
+                
+                # Reset State immediately
+                st.session_state.current_project = None
+                st.session_state.vector_store = None
+                st.session_state.chat_history = []
+                
+                st.success(f"Deleted {selected_option}")
+                st.rerun() # This refreshes the app so the list updates instantly
+
+    # 3. Create New Unit
+    with st.expander("➕ Create New Unit"):
+        with st.form("create_unit_form"):
+            new_name = st.text_input("Unit Name")
             if st.form_submit_button("Create") and new_name:
                 create_project(new_name)
                 st.rerun()
-                
-    # Delete Unit (Red Button)
-    if st.session_state.current_project:
-        with st.expander("🗑️ Delete Unit"):
-            st.warning(f"Delete {st.session_state.current_project}?")
-            if st.button("Confirm Delete", type="primary"):
-                delete_project(st.session_state.current_project)
-                st.session_state.current_project = None
-                st.success("Deleted!")
-                st.rerun()
-    
+
     st.divider()
     
-    # Music (Moved OUTSIDE logic so it never vanishes)
+    # --- MUSIC PLAYER ---
     st.markdown("### 🎧 Study Playlist")
-    music = st.radio("Vibe", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"], key="music_radio")
+    music = st.radio("Vibe", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"], key="music_selector")
     
     links = {
         "☕ Lofi": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
@@ -119,8 +132,8 @@ with st.sidebar:
         "🖤 Orgavsm": "https://www.youtube.com/watch?v=ZHLL7dPIxPw"
     }
     if music != "Off": st.video(links[music])
-    
-    st.markdown("<div style='text-align:center;font-size:0.8em;opacity:0.7'>Dev: IMBEKA MUSA</div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='text-align:center;font-size:0.8em;opacity:0.7;margin-top:20px'>Dev: IMBEKA MUSA</div>", unsafe_allow_html=True)
 
 # Helper Functions
 def save_chat_history(project_path, history):
@@ -134,7 +147,7 @@ def load_chat_history(project_path):
     return []
 
 # --- 5. MAIN APP ---
-if st.session_state.current_project:
+if st.session_state.current_project and st.session_state.current_project in projects:
     p_data = projects[st.session_state.current_project]
     st.title(f"📚 {st.session_state.current_project}")
     
@@ -144,47 +157,42 @@ if st.session_state.current_project:
     with tab1:
         st.info(f"Using {st.session_state.model_choice} for analysis.")
         
-        # New Input Types
-        input_method = st.radio("Input Method:", ["📄 Upload File", "📋 Paste Text", "🖼️ Upload Image", "🎥 YouTube"], horizontal=True)
+        input_method = st.radio("Input Method:", ["📄 Upload File", "📋 Paste Text", "🖼️ Upload Image", "🎥 YouTube"], horizontal=True, key="input_method_radio")
         doc_data = None
         
         # 1. File Upload
         if input_method == "📄 Upload File":
-            f = st.file_uploader("Upload", type=["pdf", "docx", "txt"])
+            f = st.file_uploader("Upload", type=["pdf", "docx", "txt"], key="file_uploader")
             if f:
                 path = os.path.join(p_data['path'], f.name)
                 with open(path, "wb") as w: w.write(f.getbuffer())
                 st.success(f"Saved: {f.name}")
-                if st.button("🧠 Deep Analyze File"):
+                if st.button("🧠 Deep Analyze File", key="analyze_file_btn"):
                     with st.spinner("Reading file..."):
                         doc_data = process_document(path)
         
         # 2. Paste Text
         elif input_method == "📋 Paste Text":
-            raw_text = st.text_area("Paste your notes/text here:", height=300)
-            if raw_text and st.button("🧠 Analyze Text"):
-                 # We manually package the text to look like a document
+            raw_text = st.text_area("Paste your notes/text here:", height=300, key="paste_text_area")
+            if raw_text and st.button("🧠 Analyze Text", key="analyze_text_btn"):
                  from langchain.text_splitter import RecursiveCharacterTextSplitter
                  splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
                  chunks = splitter.split_text(raw_text)
                  doc_data = {"filename": "pasted_text.txt", "full_text": raw_text, "chunks": chunks, "chunk_count": len(chunks)}
 
-        # 3. Image Upload (Simple Text Mode)
+        # 3. Image Upload
         elif input_method == "🖼️ Upload Image":
-            img_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
+            img_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'], key="image_uploader")
             if img_file:
                 st.image(img_file, width=300)
-                if st.button("🧠 Analyze Image"):
-                    st.warning("Note: Image text extraction works best with GPT-4 Vision selected.")
-                    # For MVP, we simply acknowledge the image. 
-                    # Real OCR would require complex Tesseract install or GPT-4 Vision calls.
-                    # We will placeholder this with a "Describe" prompt if we had Vision enabled.
-                    st.info("Image uploaded. Switch to 'Paste Text' if OCR fails.")
+                if st.button("🧠 Analyze Image", key="analyze_image_btn"):
+                    st.info("Image uploaded. (OCR feature pending GPT-4 Vision integration). Using placeholder text for demo.")
+                    doc_data = None 
 
         # 4. YouTube
         elif input_method == "🎥 YouTube":
-            url = st.text_input("Link:")
-            if url and st.button("Analyze Video"):
+            url = st.text_input("Link:", key="yt_url_input")
+            if url and st.button("Analyze Video", key="analyze_video_btn"):
                 with st.spinner("Transcribing..."):
                     doc_data = process_video(url)
 
@@ -203,7 +211,7 @@ if st.session_state.current_project:
     with tab2:
         c1, c2 = st.columns(2)
         with c1:
-            notes = st.text_area("Scratchpad", value=p_data.get("notes",""), height=400, key="scratchpad_area")
+            notes = st.text_area("Scratchpad", value=p_data.get("notes",""), height=400, key="scratchpad_notes")
             if st.button("Save Notes", key="save_notes_btn"): update_project_notes(st.session_state.current_project, notes)
         with c2:
             st.subheader("Executive Report")
@@ -227,7 +235,7 @@ if st.session_state.current_project:
     # TAB 4: CHAT
     with tab4:
         audio = st.audio_input("🎙️ Voice")
-        q = transcribe_audio(audio) if audio else st.chat_input("Type...")
+        q = transcribe_audio(audio) if audio else st.chat_input("Type...", key="chat_input_box")
 
         if q and st.session_state.vector_store:
             st.session_state.chat_history.append({"role": "user", "content": q})
@@ -246,7 +254,7 @@ if st.session_state.current_project:
 
     # TAB 5: QUIZ
     with tab5:
-        if st.button("New Quiz", key="new_quiz_btn"):
+        if st.button("New Quiz", key="generate_quiz_btn"):
             if st.session_state.last_summary:
                 st.session_state.last_quiz = generate_quiz(st.session_state.last_summary, st.session_state.model_choice)
         
@@ -254,7 +262,7 @@ if st.session_state.current_project:
             for i, q in enumerate(st.session_state.last_quiz):
                 st.write(f"**Q{i+1}: {q['question']}**")
                 ans = st.radio(f"Options {i}", q['options'], key=f"quiz_q_{i}")
-                if st.button(f"Check {i+1}", key=f"quiz_btn_{i}"):
+                if st.button(f"Check {i+1}", key=f"quiz_check_{i}"):
                     if ans == q['answer']: st.success("Correct!")
                     else: st.error(f"Wrong. It was {q['answer']}")
                 st.divider()
@@ -262,8 +270,8 @@ if st.session_state.current_project:
     # TAB 6: RESEARCH
     with tab6:
         st.subheader("🔎 Academic Search (ArXiv)")
-        topic = st.text_input("Enter research topic:", key="research_input")
-        if st.button("Search Papers", key="research_btn"):
+        topic = st.text_input("Enter research topic:", key="arxiv_search_input")
+        if st.button("Search Papers", key="arxiv_search_btn"):
             with st.spinner("Searching ArXiv database..."):
                 results = search_arxiv_papers(topic)
                 for r in results:
@@ -271,5 +279,6 @@ if st.session_state.current_project:
                         st.write(f"**Abstract:** {r['summary']}")
                         st.markdown(f"[📥 Download PDF]({r['pdf_url']})")
 
-else:
-    st.info("👈 Open a Unit to begin.")
+elif st.session_state.current_project is None:
+    # This is the "Blank Slate" screen when no unit is open
+    st.info("👈 Please select a Unit from the sidebar and click 'OPEN'.")
