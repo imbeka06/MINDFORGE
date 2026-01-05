@@ -3,8 +3,10 @@ import os
 import json
 from dotenv import load_dotenv
 
-# --- 1. SETUP ---
+# --- 1. SETUP & CONFIGURATION ---
 load_dotenv()
+
+# Import Custom Modules
 from project_manager import load_projects, create_project, update_project_notes, delete_project
 from pdf_processor import process_document
 from video_processor import process_video
@@ -14,206 +16,469 @@ from ai_engine import (
     transcribe_audio, text_to_speech
 )
 
+# Set Page Config
 st.set_page_config(page_title="MindForge AI", page_icon="🧠", layout="wide")
 
-# Helper Functions
+# Check for API Key
+if not os.getenv("OPENAI_API_KEY"):
+    st.error("⚠️ OPENAI_API_KEY not found! Please check your .env file.")
+    st.stop()
+
+# --- 2. HELPER FUNCTIONS ---
 def save_chat_history(project_path, history):
+    """Saves the chat history list to a JSON file."""
     file_path = os.path.join(project_path, "chat_history.json")
-    with open(file_path, "w") as f: json.dump(history, f)
+    with open(file_path, "w") as f:
+        json.dump(history, f)
 
 def load_chat_history(project_path):
+    """Loads the chat history list from a JSON file."""
     file_path = os.path.join(project_path, "chat_history.json")
     if os.path.exists(file_path):
-        with open(file_path, "r") as f: return json.load(f)
+        with open(file_path, "r") as f:
+            return json.load(f)
     return []
 
+# --- 3. THEME MANAGER ---
 def apply_theme(theme_name):
-    common_css = """
-        h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #E0E0E0 !important; }
-        .stTextInput > div > div > input, .stTextArea > div > div > textarea {
-            background-color: #2E303E !important; color: #FFFFFF !important; border: 1px solid #4A4D5A;
-        }
-        .stSelectbox > div > div > div { background-color: #2E303E !important; color: #FFFFFF !important; }
     """
+    Applies strict CSS styling for Light, Dark, and Ocean Blue themes.
+    """
+    # Base CSS to ensure text visibility in dark modes
+    base_css = """
+    <style>
+        h1, h2, h3, h4, h5, h6, p, li, span, div, label {
+            color: #E0E0E0 !important;
+        }
+        .stTextInput > div > div > input {
+            background-color: #2E303E !important;
+            color: #FFFFFF !important;
+            border: 1px solid #4A4D5A;
+        }
+        .stTextArea > div > div > textarea {
+            background-color: #2E303E !important;
+            color: #FFFFFF !important;
+            border: 1px solid #4A4D5A;
+        }
+        .stSelectbox > div > div > div {
+            background-color: #2E303E !important;
+            color: #FFFFFF !important;
+        }
+        [data-testid="stHeader"] {
+            background-color: rgba(0,0,0,0);
+        }
+    </style>
+    """
+
     if theme_name == "🌙 Dark Mode":
-        st.markdown(f"<style>.stApp {{ background-color: #0E1117; }} [data-testid='stSidebar'] {{ background-color: #171923; }} {common_css}</style>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <style>
+                .stApp {{
+                    background-color: #0E1117;
+                }}
+                [data-testid="stSidebar"] {{
+                    background-color: #171923;
+                }}
+            </style>
+            {base_css}
+        """, unsafe_allow_html=True)
+
     elif theme_name == "🌊 Ocean Blue":
-        st.markdown(f"<style>.stApp {{ background-color: #0F172A; }} [data-testid='stSidebar'] {{ background-color: #1E293B; }} h1, h2 {{ color: #38BDF8 !important; }} .stButton>button {{ background-color: #3B82F6; color: white; }} {common_css}</style>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <style>
+                .stApp {{
+                    background-color: #0F172A;
+                }}
+                [data-testid="stSidebar"] {{
+                    background-color: #1E293B;
+                }}
+                h1, h2 {{
+                    color: #38BDF8 !important;
+                }}
+                .stButton > button {{
+                    background-color: #3B82F6;
+                    color: white;
+                    border: none;
+                    font-weight: bold;
+                }}
+            </style>
+            {base_css}
+        """, unsafe_allow_html=True)
 
-# --- 3. SESSION STATE ---
-if "current_project" not in st.session_state: st.session_state.current_project = None
-if "vector_store" not in st.session_state: st.session_state.vector_store = None
-if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "last_summary" not in st.session_state: st.session_state.last_summary = None
-if "last_mm" not in st.session_state: st.session_state.last_mm = None
-if "last_quiz" not in st.session_state: st.session_state.last_quiz = None 
-if "theme" not in st.session_state: st.session_state.theme = "☀️ Light Mode"
+    # Light Mode uses default Streamlit styles, so no extra CSS needed.
 
-# --- 4. SIDEBAR ---
+# --- 4. SESSION STATE INITIALIZATION ---
+if "current_project" not in st.session_state:
+    st.session_state.current_project = None
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "last_summary" not in st.session_state:
+    st.session_state.last_summary = None
+if "last_mm" not in st.session_state:
+    st.session_state.last_mm = None
+if "last_quiz" not in st.session_state:
+    st.session_state.last_quiz = None
+if "theme" not in st.session_state:
+    st.session_state.theme = "☀️ Light Mode"
+if "model_choice" not in st.session_state:
+    st.session_state.model_choice = "gpt-3.5-turbo"
+
+# --- 5. SIDEBAR INTERFACE ---
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/brain--v1.png", width=50)
     st.markdown("## MindForge AI")
     
-    # Theme & Model
+    # Theme and Model Selectors
     col1, col2 = st.columns(2)
     with col1:
-        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], key="theme_final_fix")
+        selected_theme = st.selectbox(
+            "🎨 Theme", 
+            ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], 
+            key="theme_selector_sidebar"
+        )
         if selected_theme != st.session_state.theme:
             st.session_state.theme = selected_theme
             st.rerun()
+
     with col2:
-        if "model_choice" not in st.session_state: st.session_state.model_choice = "gpt-3.5-turbo"
-        st.session_state.model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], key="model_final_fix")
+        st.session_state.model_choice = st.selectbox(
+            "🧠 Model", 
+            ["gpt-3.5-turbo", "gpt-4-turbo"], 
+            key="model_selector_sidebar"
+        )
     
+    # Apply the selected theme immediately
     apply_theme(st.session_state.theme)
+    
     st.divider()
 
-    # --- UNIT SELECTION & DELETION ---
+    # --- UNIT MANAGER ---
+    # Load projects from disk
     projects = load_projects()
     project_list = sorted(list(projects.keys()))
     
-    # We use st.selectbox without a default to ensure a fresh choice
-    selected_unit = st.selectbox(
-        "📂 Unit Selector:", 
+    # Unit Selector Dropdown
+    # We default to "Select..." to ensure the user makes a conscious choice
+    selected_unit_option = st.selectbox(
+        "📂 Select Unit:", 
         ["Select..."] + project_list, 
-        key="unit_dropdown_final_fix"
+        key="main_unit_dropdown"
     )
     
-    if selected_unit != "Select...":
-        st.markdown(f"**Target: {selected_unit}**")
-        c1, c2 = st.columns(2)
+    # Action Buttons (Only appear if a valid unit is selected)
+    if selected_unit_option != "Select...":
+        st.markdown(f"**Action for: {selected_unit_option}**")
         
-        with c1:
-            if st.button("🚀 OPEN", type="primary", use_container_width=True, key="btn_open_fix"):
-                st.session_state.current_project = selected_unit
-                path = projects[selected_unit]['path']
-                st.session_state.vector_store = load_vector_db(path)
-                st.session_state.chat_history = load_chat_history(path)
+        col_open, col_delete = st.columns(2)
+        
+        # OPEN BUTTON
+        with col_open:
+            if st.button("🚀 OPEN", type="primary", use_container_width=True, key="btn_open_unit"):
+                st.session_state.current_project = selected_unit_option
+                
+                # Load Unit Data
+                project_path = projects[selected_unit_option]['path']
+                st.session_state.vector_store = load_vector_db(project_path)
+                st.session_state.chat_history = load_chat_history(project_path)
+                
+                st.toast(f"Unit Loaded: {selected_unit_option}")
                 st.rerun()
 
-        with c2:
-            if st.button("🗑️ DELETE", type="secondary", use_container_width=True, key="btn_del_fix"):
-                # 1. Execute deletion on disk
-                delete_project(selected_unit)
+        # DELETE BUTTON (NUCLEAR OPTION)
+        with col_delete:
+            if st.button("🗑️ DELETE", type="secondary", use_container_width=True, key="btn_delete_unit"):
+                # 1. Perform physical delete
+                success = delete_project(selected_unit_option)
                 
-                # 2. Complete Session Reset
-                st.session_state.current_project = None
-                st.session_state.vector_store = None
-                st.session_state.chat_history = []
-                st.session_state.last_summary = None
-                st.session_state.last_mm = None
-                st.session_state.last_quiz = None
-                
-                # 3. Toast notification and Hard Rerun to update the dropdown list
-                st.toast(f"Deleted {selected_unit}")
-                st.rerun() 
+                if success:
+                    # 2. Reset Session State completely to avoid 'Ghost' units
+                    st.session_state.current_project = None
+                    st.session_state.vector_store = None
+                    st.session_state.chat_history = []
+                    st.session_state.last_summary = None
+                    st.session_state.last_mm = None
+                    st.session_state.last_quiz = None
+                    
+                    st.success(f"Deleted {selected_unit_option}")
+                    # 3. Force Rerun to update the sidebar list instantly
+                    st.rerun()
+                else:
+                    st.error("Could not delete. Folder might be open elsewhere.")
 
-    st.divider()
+    # Create New Unit Expander
     with st.expander("➕ Create New Unit"):
-        with st.form("create_form_final_fix"):
-            new_name = st.text_input("Unit Name")
-            if st.form_submit_button("Create") and new_name:
-                create_project(new_name)
+        with st.form("create_unit_form_sidebar"):
+            new_unit_name = st.text_input("Unit Name")
+            submit_create = st.form_submit_button("Create")
+            
+            if submit_create and new_unit_name:
+                create_project(new_unit_name)
+                st.success(f"Created {new_unit_name}!")
                 st.rerun()
 
-    # MUSIC PLAYER
     st.divider()
-    music = st.radio("Vibe", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"], key="music_final_fix")
-    links = {
-        "☕ Lofi": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
-        "🎻 Dark": "https://www.youtube.com/watch?v=D9km3yXmR8k",
-        "🎷 Jazz": "https://www.youtube.com/watch?v=e2A3_111fwc",
-        "🥀 Lana": "https://www.youtube.com/watch?v=5XJNg8x89yo",
+
+    # --- MUSIC PLAYER ---
+    st.markdown("### 🎧 Study Playlist")
+    music_vibe = st.radio(
+        "Select Vibe:", 
+        ["Off", "☕ Lofi Girl", "🎻 Dark Academia", "🎷 60s Jazz/Soul", "🥀 Lana Del Rey", "🖤 Orgavsm"], 
+        key="music_player_radio"
+    )
+    
+    music_links = {
+        "☕ Lofi Girl": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
+        "🎻 Dark Academia": "https://www.youtube.com/watch?v=D9km3yXmR8k",
+        "🎷 60s Jazz/Soul": "https://www.youtube.com/watch?v=e2A3_111fwc",
+        "🥀 Lana Del Rey": "https://www.youtube.com/watch?v=5XJNg8x89yo",
         "🖤 Orgavsm": "https://www.youtube.com/watch?v=ZHLL7dPIxPw"
     }
-    if music != "Off": st.video(links[music])
     
-    st.markdown("<div style='text-align:center;font-size:0.8em;opacity:0.7;margin-top:20px'>Architect and Developer<br><strong>IMBEKA MUSA</strong></div>", unsafe_allow_html=True)
+    if music_vibe != "Off":
+        st.video(music_links[music_vibe])
 
-# --- 5. MAIN CONTENT ---
+    st.divider()
+    
+    # --- CREDITS ---
+    st.markdown(
+        """
+        <div style="text-align: center; opacity: 0.7; font-size: 0.8em; margin-top: 20px;">
+            Architect and Developer<br>
+            <strong>IMBEKA MUSA</strong>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# --- 6. MAIN APPLICATION CONTENT ---
+# Only show content if a project is loaded AND it exists in the project list
 if st.session_state.current_project and st.session_state.current_project in projects:
-    p_data = projects[st.session_state.current_project]
+    project_data = projects[st.session_state.current_project]
     st.title(f"📚 {st.session_state.current_project}")
     
-    tabs = st.tabs(["📂 Upload/Input", "📝 Notes", "🗺️ Map", "💬 Chat", "🎓 Quiz", "🔍 Research"])
+    # Define Tabs
+    tab_upload, tab_images, tab_notes, tab_chat, tab_quiz, tab_research = st.tabs([
+        "📂 Upload & Input", 
+        "🖼️ Image Analysis",
+        "📝 Notes & Report", 
+        "💬 AI Chat", 
+        "🎓 Interactive Quiz", 
+        "🔍 Research (ArXiv)"
+    ])
 
-    # TAB 1: UPLOAD
-    with tabs[0]:
-        st.info(f"Model: {st.session_state.model_choice}")
-        input_method = st.radio("Method:", ["📄 File", "📋 Paste", "🎥 YouTube"], horizontal=True, key="method_fix")
+    # --- TAB 1: UPLOAD & INPUT ---
+    with tab_upload:
+        st.info(f"Currently using model: **{st.session_state.model_choice}**")
+        
+        input_method = st.radio(
+            "Select Input Method:", 
+            ["📄 Upload File (PDF/DOCX/TXT)", "📋 Paste Text", "🎥 YouTube Video"], 
+            horizontal=True,
+            key="input_method_selector"
+        )
         
         doc_data = None
-        if input_method == "📄 File":
-            f = st.file_uploader("Upload", type=["pdf", "docx", "txt"], key="file_up_fix")
-            if f:
-                path = os.path.join(p_data['path'], f.name)
-                with open(path, "wb") as w: w.write(f.getbuffer())
-                if st.button("🧠 Deep Analyze", key="analyze_f_fix"):
-                    doc_data = process_document(path)
         
-        elif input_method == "📋 Paste":
-            raw_text = st.text_area("Paste text:", height=200, key="paste_fix")
-            if raw_text and st.button("🧠 Analyze Text", key="analyze_t_fix"):
+        # 1. File Upload Logic
+        if input_method == "📄 Upload File (PDF/DOCX/TXT)":
+            uploaded_file = st.file_uploader("Choose a file...", type=["pdf", "docx", "txt"], key="main_file_uploader")
+            
+            if uploaded_file:
+                save_path = os.path.join(project_data['path'], uploaded_file.name)
+                with open(save_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                st.success(f"File Saved: {uploaded_file.name}")
+                
+                if st.button("🧠 Deep Analyze File", key="btn_analyze_file"):
+                    with st.spinner("Processing document... (This may take a moment)"):
+                        doc_data = process_document(save_path)
+
+        # 2. Paste Text Logic
+        elif input_method == "📋 Paste Text":
+            pasted_text = st.text_area("Paste your study notes here:", height=300, key="text_paste_area")
+            
+            if pasted_text and st.button("🧠 Analyze Text", key="btn_analyze_text"):
                  from langchain.text_splitter import RecursiveCharacterTextSplitter
-                 chunks = RecursiveCharacterTextSplitter(chunk_size=2000).split_text(raw_text)
-                 doc_data = {"filename": "manual.txt", "full_text": raw_text, "chunks": chunks, "chunk_count": len(chunks)}
+                 text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+                 chunks = text_splitter.split_text(pasted_text)
+                 
+                 doc_data = {
+                     "filename": "manual_notes.txt", 
+                     "full_text": pasted_text, 
+                     "chunks": chunks, 
+                     "chunk_count": len(chunks)
+                 }
 
-        elif input_method == "🎥 YouTube":
-            url = st.text_input("URL:", key="yt_fix")
-            if url and st.button("Analyze Video", key="analyze_v_fix"):
-                doc_data = process_video(url)
+        # 3. YouTube Logic
+        elif input_method == "🎥 YouTube Video":
+            video_url = st.text_input("Paste YouTube Link:", key="youtube_url_input")
+            
+            if video_url and st.button("🧠 Analyze Video", key="btn_analyze_video"):
+                with st.spinner("Fetching transcript and processing..."):
+                    doc_data = process_video(video_url)
+                    if not doc_data:
+                        st.error("Could not retrieve transcript. Video might not have captions.")
 
+        # Common Processing Logic (Runs if doc_data is generated)
         if doc_data:
-            st.session_state.last_summary = generate_deep_summary(doc_data['chunks'], st.session_state.model_choice)
-            st.session_state.last_mm = generate_mind_map(doc_data['chunks'][0], st.session_state.model_choice)
-            st.session_state.vector_store = create_vector_db(doc_data['chunks'], p_data['path'])
-            st.success("Unit Memory updated!")
+            # Generate Summary
+            summary = generate_deep_summary(doc_data['chunks'], st.session_state.model_choice)
+            # Generate Mind Map Data
+            mm_data = generate_mind_map(doc_data['chunks'][0], st.session_state.model_choice)
+            # Create and Save Vector Database (Memory)
+            vector_store = create_vector_db(doc_data['chunks'], save_path=project_data['path'])
+            
+            # Update Session State
+            st.session_state.vector_store = vector_store
+            st.session_state.last_summary = summary
+            st.session_state.last_mm = mm_data
+            
+            st.success("✅ Analysis Complete! Memory Updated.")
 
-    # TAB 2: NOTES
-    with tabs[1]:
-        c1, c2 = st.columns(2)
-        with c1:
-            notes = st.text_area("Scratchpad", value=p_data.get("notes",""), height=400, key="notes_fix")
-            if st.button("Save", key="save_fix"): update_project_notes(st.session_state.current_project, notes)
-        with c2:
-            st.subheader("Deep Insight Report")
-            if st.session_state.last_summary: st.markdown(st.session_state.last_summary)
+    # --- TAB 2: IMAGE ANALYSIS ---
+    with tab_images:
+        st.subheader("🖼️ Visual Study Assistant")
+        st.markdown("Upload diagrams, handwritten notes, or whiteboard photos.")
+        
+        uploaded_image = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'], key="image_uploader_tab")
+        
+        if uploaded_image:
+            st.image(uploaded_image, width=500, caption="Uploaded Image")
+            
+            if st.button("🧠 Extract Knowledge", key="btn_analyze_image"):
+                if st.session_state.model_choice == "gpt-4-turbo":
+                    st.info("Sending image to GPT-4 Vision for analysis...")
+                    # Placeholder: Real implementation would send base64 image to OpenAI API here.
+                    st.success("Analysis simulated (Enable Vision API to activate).")
+                else:
+                    st.warning("⚠️ Image analysis requires **GPT-4 Turbo**. Please switch models in the sidebar.")
 
-    # TAB 4: CHAT
-    with tabs[3]:
-        audio = st.audio_input("🎙️ Voice Question", key="voice_fix")
-        q = transcribe_audio(audio) if audio else st.chat_input("Ask a question...", key="chat_fix")
-        if q and st.session_state.vector_store:
-            st.session_state.chat_history.append({"role": "user", "content": q})
-            ans = get_chat_response(q, st.session_state.vector_store, st.session_state.model_choice)
-            st.session_state.chat_history.append({"role": "assistant", "content": ans})
-            save_chat_history(p_data['path'], st.session_state.chat_history)
-            st.audio(text_to_speech(ans), format="audio/mp3")
-        for msg in st.session_state.chat_history:
-            st.chat_message(msg["role"]).write(msg["content"])
-
-    # TAB 5: QUIZ
-    with tabs[4]:
-        if st.button("Generate Mini-Quiz", key="quiz_fix_btn"):
+    # --- TAB 3: NOTES & REPORT ---
+    with tab_notes:
+        col_scratchpad, col_report = st.columns(2)
+        
+        with col_scratchpad:
+            st.subheader("📝 Your Scratchpad")
+            user_notes = st.text_area(
+                "Type your personal notes here...", 
+                value=project_data.get("notes", ""), 
+                height=500,
+                key="scratchpad_text_area"
+            )
+            if st.button("💾 Save Notes", key="btn_save_notes"):
+                update_project_notes(st.session_state.current_project, user_notes)
+                st.toast("Notes saved successfully!")
+        
+        with col_report:
+            st.subheader("📑 AI Executive Report")
             if st.session_state.last_summary:
-                st.session_state.last_quiz = generate_quiz(st.session_state.last_summary, st.session_state.model_choice)
+                st.markdown(st.session_state.last_summary)
+            else:
+                st.info("No analysis generated yet. Go to the Upload tab to begin.")
+
+    # --- TAB 4: CHAT ---
+    with tab_chat:
+        st.subheader("💬 Chat with your Unit")
+        
+        # Audio Input
+        audio_input = st.audio_input("🎙️ Speak your question", key="audio_chat_input")
+        
+        # Text Input
+        if audio_input:
+            user_query = transcribe_audio(audio_input)
+        else:
+            user_query = st.chat_input("Type your question here...", key="text_chat_input")
+
+        # Process Query
+        if user_query and st.session_state.vector_store:
+            # Add User Message to History
+            st.session_state.chat_history.append({"role": "user", "content": user_query})
+            
+            # Get AI Response
+            with st.spinner("Thinking..."):
+                ai_response = get_chat_response(
+                    user_query, 
+                    st.session_state.vector_store, 
+                    st.session_state.model_choice
+                )
+            
+            # Add AI Message to History
+            st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
+            
+            # Save History to Disk (Persistence)
+            save_chat_history(project_data['path'], st.session_state.chat_history)
+            
+            # Text to Speech
+            audio_response = text_to_speech(ai_response)
+            if audio_response:
+                st.audio(audio_response, format="audio/mp3")
+
+        # Render Chat History
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    # --- TAB 5: QUIZ ---
+    with tab_quiz:
+        st.subheader("🎓 Test Your Knowledge")
+        
+        if st.button("🎲 Generate New Quiz", key="btn_generate_quiz"):
+            if st.session_state.last_summary:
+                with st.spinner("Drafting questions..."):
+                    st.session_state.last_quiz = generate_quiz(
+                        st.session_state.last_summary, 
+                        st.session_state.model_choice
+                    )
+            else:
+                st.warning("Please analyze a document first to generate a quiz.")
+        
+        # Render Quiz if it exists
         if st.session_state.last_quiz:
-            for i, q in enumerate(st.session_state.last_quiz):
-                st.write(f"**Q{i+1}: {q['question']}**")
-                ans = st.radio(f"Options {i}", q['options'], key=f"q_opt_fix_{i}")
-                if st.button(f"Check {i+1}", key=f"q_chk_fix_{i}"):
-                    if ans == q['answer']: st.success("Correct!")
-                    else: st.error(f"Wrong. Correct: {q['answer']}")
+            score = 0
+            for i, question in enumerate(st.session_state.last_quiz):
+                st.markdown(f"**Question {i+1}: {question['question']}**")
+                
+                answer = st.radio(
+                    f"Select Answer for Q{i+1}:", 
+                    question['options'], 
+                    key=f"quiz_radio_{i}"
+                )
+                
+                if st.button(f"Check Answer {i+1}", key=f"btn_check_quiz_{i}"):
+                    if answer == question['answer']:
+                        st.success("✅ Correct!")
+                        score += 1
+                    else:
+                        st.error(f"❌ Wrong. The correct answer was: {question['answer']}")
+                st.divider()
 
-    # TAB 6: RESEARCH
-    with tabs[5]:
-        topic = st.text_input("Enter Topic for ArXiv Search:", key="arxiv_fix")
-        if st.button("Find Papers", key="arxiv_btn_fix"):
-            for r in search_arxiv_papers(topic):
-                with st.expander(f"📄 {r['title']}"):
-                    st.write(r['summary'])
-                    st.markdown(f"[📥 Download PDF]({r['pdf_url']})")
+    # --- TAB 6: RESEARCH ---
+    with tab_research:
+        st.subheader("🔎 Academic Research (ArXiv)")
+        
+        research_topic = st.text_input("Enter a research topic:", key="research_topic_input")
+        
+        if st.button("Search Papers", key="btn_search_arxiv"):
+            with st.spinner("Searching ArXiv Database..."):
+                results = search_arxiv_papers(research_topic)
+                
+                if not results:
+                    st.warning("No papers found.")
+                
+                for result in results:
+                    with st.expander(f"📄 {result['title']} ({result['published']})"):
+                        st.markdown(f"**Abstract:** {result['summary']}")
+                        st.markdown(f"[📥 Download PDF]({result['pdf_url']})")
 
-else:
-    st.markdown("## 👋 Ready to study?")
-    st.info("👈 Use the **Unit Selector** in the sidebar to Open or Delete a learning unit.")
+elif st.session_state.current_project is None:
+    # --- BLANK STATE ---
+    st.markdown("## 👋 Welcome to MindForge AI")
+    st.info("👈 **Start Here:** Select a Unit from the sidebar and click 'ROCKET OPEN'.")
+    st.markdown("---")
+    st.markdown("### 🛠️ How to use:")
+    st.markdown("1. **Create** a new Unit in the sidebar.")
+    st.markdown("2. **Select** it and click **OPEN**.")
+    st.markdown("3. **Upload** a PDF, video link, or paste notes.")
+    st.markdown("4. **Chat**, **Quiz**, and **Research** to master the topic.")
