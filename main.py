@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import json
-import shutil
 from dotenv import load_dotenv
 
 # --- 1. SETUP ---
@@ -17,11 +16,17 @@ from ai_engine import (
 
 st.set_page_config(page_title="MindForge AI", page_icon="🧠", layout="wide")
 
-if not os.getenv("OPENAI_API_KEY"):
-    st.error("⚠️ OPENAI_API_KEY not found! Check your .env file.")
-    st.stop()
+# Helper Functions
+def save_chat_history(project_path, history):
+    file_path = os.path.join(project_path, "chat_history.json")
+    with open(file_path, "w") as f: json.dump(history, f)
 
-# --- 2. THEME MANAGER ---
+def load_chat_history(project_path):
+    file_path = os.path.join(project_path, "chat_history.json")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f: return json.load(f)
+    return []
+
 def apply_theme(theme_name):
     common_css = """
         h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #E0E0E0 !important; }
@@ -52,76 +57,68 @@ with st.sidebar:
     # Theme & Model
     col1, col2 = st.columns(2)
     with col1:
-        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], key="theme_selector_unique")
+        selected_theme = st.selectbox("🎨 Theme", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], key="theme_final_fix")
         if selected_theme != st.session_state.theme:
             st.session_state.theme = selected_theme
             st.rerun()
     with col2:
         if "model_choice" not in st.session_state: st.session_state.model_choice = "gpt-3.5-turbo"
-        st.session_state.model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], key="model_selector_unique")
+        st.session_state.model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], key="model_final_fix")
     
     apply_theme(st.session_state.theme)
     st.divider()
 
-    # --- PROJECT MANAGER ---
+    # --- UNIT SELECTION & DELETION ---
     projects = load_projects()
-    project_list = list(projects.keys())
+    project_list = sorted(list(projects.keys()))
     
-    # 1. UNIT SELECTION DROP DOWN
-    selected_option = st.selectbox(
-        "📂 Select Unit:", 
+    # We use st.selectbox without a default to ensure a fresh choice
+    selected_unit = st.selectbox(
+        "📂 Unit Selector:", 
         ["Select..."] + project_list, 
-        key="unit_main_select_unique"
+        key="unit_dropdown_final_fix"
     )
     
-    # 2. ACTION BUTTONS (Only appear if a unit is selected)
-    if selected_option != "Select...":
-        col_open, col_del = st.columns(2)
+    if selected_unit != "Select...":
+        st.markdown(f"**Target: {selected_unit}**")
+        c1, c2 = st.columns(2)
         
-        # OPEN BUTTON
-        with col_open:
-            if st.button("🚀 OPEN", type="primary", use_container_width=True, key="btn_open_unit"):
-                st.session_state.current_project = selected_option
-                
-                # Load Data immediately
-                path = projects[selected_option]['path']
+        with c1:
+            if st.button("🚀 OPEN", type="primary", use_container_width=True, key="btn_open_fix"):
+                st.session_state.current_project = selected_unit
+                path = projects[selected_unit]['path']
                 st.session_state.vector_store = load_vector_db(path)
-                from main import load_chat_history
                 st.session_state.chat_history = load_chat_history(path)
-                
-                st.toast(f"Opening {selected_option}...")
                 st.rerun()
 
-        # DELETE BUTTON
-        with col_del:
-            if st.button("🗑️ DELETE", type="secondary", use_container_width=True, key="btn_delete_unit"):
-                # 1. Delete the folder
-                delete_project(selected_option)
+        with c2:
+            if st.button("🗑️ DELETE", type="secondary", use_container_width=True, key="btn_del_fix"):
+                # 1. Execute deletion on disk
+                delete_project(selected_unit)
                 
-                # 2. Reset the session state so we don't try to load a dead project
-                if st.session_state.current_project == selected_option:
-                    st.session_state.current_project = None
-                    st.session_state.vector_store = None
-                    st.session_state.chat_history = []
+                # 2. Complete Session Reset
+                st.session_state.current_project = None
+                st.session_state.vector_store = None
+                st.session_state.chat_history = []
+                st.session_state.last_summary = None
+                st.session_state.last_mm = None
+                st.session_state.last_quiz = None
                 
-                # 3. Force Rerun to refresh the dropdown list instantly
-                st.success(f"Deleted {selected_option}")
-                st.rerun()
+                # 3. Toast notification and Hard Rerun to update the dropdown list
+                st.toast(f"Deleted {selected_unit}")
+                st.rerun() 
 
-    # 3. CREATE NEW UNIT
+    st.divider()
     with st.expander("➕ Create New Unit"):
-        with st.form("create_unit_form_unique"):
+        with st.form("create_form_final_fix"):
             new_name = st.text_input("Unit Name")
             if st.form_submit_button("Create") and new_name:
                 create_project(new_name)
                 st.rerun()
 
+    # MUSIC PLAYER
     st.divider()
-    
-    # --- MUSIC PLAYER ---
-    st.markdown("### 🎧 Study Playlist")
-    music = st.radio("Vibe", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"], key="music_selector_unique")
-    
+    music = st.radio("Vibe", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"], key="music_final_fix")
     links = {
         "☕ Lofi": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
         "🎻 Dark": "https://www.youtube.com/watch?v=D9km3yXmR8k",
@@ -130,155 +127,93 @@ with st.sidebar:
         "🖤 Orgavsm": "https://www.youtube.com/watch?v=ZHLL7dPIxPw"
     }
     if music != "Off": st.video(links[music])
+    
+    st.markdown("<div style='text-align:center;font-size:0.8em;opacity:0.7;margin-top:20px'>Architect and Developer<br><strong>IMBEKA MUSA</strong></div>", unsafe_allow_html=True)
 
-    st.markdown("<div style='text-align:center;font-size:0.8em;opacity:0.7;margin-top:20px'>Dev: IMBEKA MUSA</div>", unsafe_allow_html=True)
-
-# Helper Functions
-def save_chat_history(project_path, history):
-    file_path = os.path.join(project_path, "chat_history.json")
-    with open(file_path, "w") as f: json.dump(history, f)
-
-def load_chat_history(project_path):
-    file_path = os.path.join(project_path, "chat_history.json")
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f: return json.load(f)
-    return []
-
-# --- 5. MAIN APP CONTENT ---
-# Only show the main app if a valid project is currently loaded
+# --- 5. MAIN CONTENT ---
 if st.session_state.current_project and st.session_state.current_project in projects:
     p_data = projects[st.session_state.current_project]
     st.title(f"📚 {st.session_state.current_project}")
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📂 Upload/Input", "📝 Notes", "🗺️ Map", "💬 Chat", "🎓 Quiz", "🔍 Research"])
+    tabs = st.tabs(["📂 Upload/Input", "📝 Notes", "🗺️ Map", "💬 Chat", "🎓 Quiz", "🔍 Research"])
 
-    # TAB 1: UPLOAD & INPUT
-    with tab1:
-        st.info(f"Using {st.session_state.model_choice} for analysis.")
+    # TAB 1: UPLOAD
+    with tabs[0]:
+        st.info(f"Model: {st.session_state.model_choice}")
+        input_method = st.radio("Method:", ["📄 File", "📋 Paste", "🎥 YouTube"], horizontal=True, key="method_fix")
         
-        input_method = st.radio("Input Method:", ["📄 Upload File", "📋 Paste Text", "🖼️ Upload Image", "🎥 YouTube"], horizontal=True, key="input_method_radio")
         doc_data = None
-        
-        # 1. File Upload
-        if input_method == "📄 Upload File":
-            f = st.file_uploader("Upload", type=["pdf", "docx", "txt"], key="file_uploader")
+        if input_method == "📄 File":
+            f = st.file_uploader("Upload", type=["pdf", "docx", "txt"], key="file_up_fix")
             if f:
                 path = os.path.join(p_data['path'], f.name)
                 with open(path, "wb") as w: w.write(f.getbuffer())
-                st.success(f"Saved: {f.name}")
-                if st.button("🧠 Deep Analyze File", key="analyze_file_btn"):
-                    with st.spinner("Reading file..."):
-                        doc_data = process_document(path)
+                if st.button("🧠 Deep Analyze", key="analyze_f_fix"):
+                    doc_data = process_document(path)
         
-        # 2. Paste Text
-        elif input_method == "📋 Paste Text":
-            raw_text = st.text_area("Paste your notes/text here:", height=300, key="paste_text_area")
-            if raw_text and st.button("🧠 Analyze Text", key="analyze_text_btn"):
+        elif input_method == "📋 Paste":
+            raw_text = st.text_area("Paste text:", height=200, key="paste_fix")
+            if raw_text and st.button("🧠 Analyze Text", key="analyze_t_fix"):
                  from langchain.text_splitter import RecursiveCharacterTextSplitter
-                 splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-                 chunks = splitter.split_text(raw_text)
-                 doc_data = {"filename": "pasted_text.txt", "full_text": raw_text, "chunks": chunks, "chunk_count": len(chunks)}
+                 chunks = RecursiveCharacterTextSplitter(chunk_size=2000).split_text(raw_text)
+                 doc_data = {"filename": "manual.txt", "full_text": raw_text, "chunks": chunks, "chunk_count": len(chunks)}
 
-        # 3. Image Upload
-        elif input_method == "🖼️ Upload Image":
-            img_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'], key="image_uploader")
-            if img_file:
-                st.image(img_file, width=300)
-                if st.button("🧠 Analyze Image", key="analyze_image_btn"):
-                    st.info("Image uploaded. (OCR feature pending GPT-4 Vision integration). Using placeholder text for demo.")
-                    doc_data = None 
-
-        # 4. YouTube
         elif input_method == "🎥 YouTube":
-            url = st.text_input("Link:", key="yt_url_input")
-            if url and st.button("Analyze Video", key="analyze_video_btn"):
-                with st.spinner("Transcribing..."):
-                    doc_data = process_video(url)
+            url = st.text_input("URL:", key="yt_fix")
+            if url and st.button("Analyze Video", key="analyze_v_fix"):
+                doc_data = process_video(url)
 
-        # Process Data if found
         if doc_data:
-            summary = generate_deep_summary(doc_data['chunks'], st.session_state.model_choice)
-            mm = generate_mind_map(doc_data['chunks'][0], st.session_state.model_choice)
-            vs = create_vector_db(doc_data['chunks'], p_data['path'])
-            
-            st.session_state.vector_store = vs
-            st.session_state.last_summary = summary
-            st.session_state.last_mm = mm
-            st.success("Analysis Complete! Memory Saved.")
+            st.session_state.last_summary = generate_deep_summary(doc_data['chunks'], st.session_state.model_choice)
+            st.session_state.last_mm = generate_mind_map(doc_data['chunks'][0], st.session_state.model_choice)
+            st.session_state.vector_store = create_vector_db(doc_data['chunks'], p_data['path'])
+            st.success("Unit Memory updated!")
 
     # TAB 2: NOTES
-    with tab2:
+    with tabs[1]:
         c1, c2 = st.columns(2)
         with c1:
-            notes = st.text_area("Scratchpad", value=p_data.get("notes",""), height=400, key="scratchpad_notes")
-            if st.button("Save Notes", key="save_notes_btn"): update_project_notes(st.session_state.current_project, notes)
+            notes = st.text_area("Scratchpad", value=p_data.get("notes",""), height=400, key="notes_fix")
+            if st.button("Save", key="save_fix"): update_project_notes(st.session_state.current_project, notes)
         with c2:
-            st.subheader("Executive Report")
+            st.subheader("Deep Insight Report")
             if st.session_state.last_summary: st.markdown(st.session_state.last_summary)
 
-    # TAB 3: MAP
-    with tab3:
-        if st.session_state.last_mm:
-            from streamlit_agraph import agraph, Node, Edge, Config
-            nodes, edges, seen = [], [], set()
-            for n in st.session_state.last_mm.get("nodes", []):
-                if n["id"] not in seen:
-                    nodes.append(Node(id=n["id"], label=n["id"], size=20, color="#FF4B4B"))
-                    seen.add(n["id"])
-            for e in st.session_state.last_mm.get("edges", []):
-                if e["from"] in seen and e["to"] in seen:
-                    edges.append(Edge(source=e["from"], target=e["to"]))
-            agraph(nodes, edges, Config(height=500, directed=True, physics=True))
-        else: st.info("Analyze content to see map.")
-
     # TAB 4: CHAT
-    with tab4:
-        audio = st.audio_input("🎙️ Voice")
-        q = transcribe_audio(audio) if audio else st.chat_input("Type...", key="chat_input_box")
-
+    with tabs[3]:
+        audio = st.audio_input("🎙️ Voice Question", key="voice_fix")
+        q = transcribe_audio(audio) if audio else st.chat_input("Ask a question...", key="chat_fix")
         if q and st.session_state.vector_store:
             st.session_state.chat_history.append({"role": "user", "content": q})
-            
-            with st.spinner("Thinking..."):
-                ans = get_chat_response(q, st.session_state.vector_store, st.session_state.model_choice)
-            
+            ans = get_chat_response(q, st.session_state.vector_store, st.session_state.model_choice)
             st.session_state.chat_history.append({"role": "assistant", "content": ans})
             save_chat_history(p_data['path'], st.session_state.chat_history)
-            
-            audio_response = text_to_speech(ans)
-            if audio_response: st.audio(audio_response, format="audio/mp3")
-
+            st.audio(text_to_speech(ans), format="audio/mp3")
         for msg in st.session_state.chat_history:
             st.chat_message(msg["role"]).write(msg["content"])
 
     # TAB 5: QUIZ
-    with tab5:
-        if st.button("New Quiz", key="generate_quiz_btn"):
+    with tabs[4]:
+        if st.button("Generate Mini-Quiz", key="quiz_fix_btn"):
             if st.session_state.last_summary:
                 st.session_state.last_quiz = generate_quiz(st.session_state.last_summary, st.session_state.model_choice)
-        
         if st.session_state.last_quiz:
             for i, q in enumerate(st.session_state.last_quiz):
                 st.write(f"**Q{i+1}: {q['question']}**")
-                ans = st.radio(f"Options {i}", q['options'], key=f"quiz_q_{i}")
-                if st.button(f"Check {i+1}", key=f"quiz_check_{i}"):
+                ans = st.radio(f"Options {i}", q['options'], key=f"q_opt_fix_{i}")
+                if st.button(f"Check {i+1}", key=f"q_chk_fix_{i}"):
                     if ans == q['answer']: st.success("Correct!")
-                    else: st.error(f"Wrong. It was {q['answer']}")
-                st.divider()
+                    else: st.error(f"Wrong. Correct: {q['answer']}")
 
     # TAB 6: RESEARCH
-    with tab6:
-        st.subheader("🔎 Academic Search (ArXiv)")
-        topic = st.text_input("Enter research topic:", key="arxiv_search_input")
-        if st.button("Search Papers", key="arxiv_search_btn"):
-            with st.spinner("Searching ArXiv database..."):
-                results = search_arxiv_papers(topic)
-                for r in results:
-                    with st.expander(f"📄 {r['title']} ({r['published']})"):
-                        st.write(f"**Abstract:** {r['summary']}")
-                        st.markdown(f"[📥 Download PDF]({r['pdf_url']})")
+    with tabs[5]:
+        topic = st.text_input("Enter Topic for ArXiv Search:", key="arxiv_fix")
+        if st.button("Find Papers", key="arxiv_btn_fix"):
+            for r in search_arxiv_papers(topic):
+                with st.expander(f"📄 {r['title']}"):
+                    st.write(r['summary'])
+                    st.markdown(f"[📥 Download PDF]({r['pdf_url']})")
 
-elif st.session_state.current_project is None:
-    # Blank State Page
-    st.markdown("## 👋 Welcome to MindForge AI")
-    st.info("👈 Please select a Unit from the sidebar and click **'ROCKET OPEN'** to begin.")
+else:
+    st.markdown("## 👋 Ready to study?")
+    st.info("👈 Use the **Unit Selector** in the sidebar to Open or Delete a learning unit.")
