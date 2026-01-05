@@ -1,6 +1,7 @@
 import os
 import json
 import io
+import arxiv
 from dotenv import load_dotenv
 from gtts import gTTS
 
@@ -13,56 +14,76 @@ from langchain_core.documents import Document
 # Load environment variables
 load_dotenv()
 
-# Global variables
-init_error = None
 embeddings = None
-llm = None
 client = None 
+
+# --- INITIALIZATION ---
+def get_llm(model_name="gpt-3.5-turbo"):
+    """
+    Returns the LLM based on user selection.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key: return None
+    return ChatOpenAI(model=model_name, temperature=0.3, api_key=api_key)
 
 try:
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("⚠️ Warning: OPENAI_API_KEY not found in environment.")
-    else:
-        # 1. Initialize LangChain Components
+    if api_key:
         embeddings = OpenAIEmbeddings(api_key=api_key)
-        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.3, api_key=api_key)
-        
-        # 2. Initialize Direct OpenAI Client (For Whisper Audio)
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
-
 except Exception as e:
-    init_error = str(e)
-    print(f"DEBUG ERROR: {init_error}")
+    print(f"Startup Error: {e}")
 
-# --- TEXT FUNCTIONS ---
+# --- 1. DEEP ANALYSIS FUNCTIONS ---
 
-def generate_summary(text_chunk):
+def generate_deep_summary(chunks, model_name="gpt-3.5-turbo"):
+    """
+    Reads the first 3 chunks (approx 15 pages) to create a comprehensive summary.
+    """
+    llm = get_llm(model_name)
     if not llm: return "⚠️ AI not running."
+    
+    # We combine the first 3 chunks to get a broader context
+    # (Adjust this number if you want it to read even more, but it costs more)
+    combined_text = "\n\n".join(chunks[:3])
+    
     try:
         prompt = f"""
-        You are an expert academic tutor. Summarize the following text clearly.
-        Use these sections: 
-        1. Core Concept
-        2. Key Details (Bullet points)
-        3. Practical Implication
+        You are an expert Research Analyst. Perform a Deep Analysis on the following document text.
+        Do not be vague. Extract concrete data, arguments, and findings.
         
-        TEXT: {text_chunk[:4000]}
+        Format the output as:
+        # 📑 Executive Report
+        
+        ## 1. Core Thesis
+        (2-3 sentences explaining the main argument)
+        
+        ## 2. Key Findings & Data
+        * (Bullet point with specific details)
+        * (Bullet point with specific details)
+        * (Bullet point with specific details)
+        
+        ## 3. Critical Analysis
+        (Discuss methodology, strengths, or implications)
+        
+        ## 4. Conclusion
+        (Final takeaway)
+        
+        TEXT DATA: {combined_text[:12000]}
         """
         response = llm.invoke(prompt)
         return response.content
     except Exception as e:
         return f"⚠️ Error: {str(e)}"
 
-def generate_mind_map(text_chunk):
+def generate_mind_map(text_chunk, model_name="gpt-3.5-turbo"):
+    llm = get_llm(model_name)
     if not llm: return {"nodes": [], "edges": []}
     try:
         prompt = f"""
-        Analyze the text and identify core concepts and relationships.
-        Output ONLY valid JSON with 'nodes' (id, group) and 'edges' (from, to, label).
-        Do not use markdown blocks.
-        
+        Analyze the text and identify core concepts.
+        Output ONLY valid JSON with 'nodes' (id) and 'edges' (from, to).
         TEXT: {text_chunk[:3000]}
         """
         response = llm.invoke(prompt)
@@ -71,49 +92,81 @@ def generate_mind_map(text_chunk):
     except:
         return {"nodes": [], "edges": []}
 
-# --- PERSISTENCE FUNCTIONS (MEMORY FIX) ---
+def generate_quiz(text_chunk, model_name="gpt-3.5-turbo"):
+    llm = get_llm(model_name)
+    if not llm: return []
+    try:
+        prompt = f"""
+        Create 3 multiple-choice questions (JSON format).
+        [
+            {{
+                "question": "...",
+                "options": ["A", "B", "C", "D"],
+                "answer": "Option A"
+            }}
+        ]
+        TEXT: {text_chunk[:3000]}
+        """
+        response = llm.invoke(prompt)
+        content = response.content.replace("```json", "").replace("```", "").strip()
+        return json.loads(content)
+    except:
+        return []
+
+# --- 2. RESEARCH ENGINE (ARXIV) ---
+
+def search_arxiv_papers(topic):
+    """
+    Searches ArXiv database for scientific papers.
+    """
+    try:
+        # Search for top 5 results
+        search = arxiv.Search(
+            query=topic,
+            max_results=5,
+            sort_by=arxiv.SortCriterion.Relevance
+        )
+        
+        results = []
+        for result in search.results():
+            results.append({
+                "title": result.title,
+                "summary": result.summary,
+                "pdf_url": result.pdf_url,
+                "published": result.published.strftime("%Y-%m-%d")
+            })
+        return results
+    except Exception as e:
+        print(f"ArXiv Error: {e}")
+        return []
+
+# --- 3. MEMORY & CHAT ---
 
 def create_vector_db(chunks, save_path=None):
-    """
-    Creates a vector DB and optionally saves it to disk.
-    """
     if not embeddings: return None
     try:
         docs = [Document(page_content=chunk) for chunk in chunks]
         vector_store = FAISS.from_documents(docs, embeddings)
-        
-        # SAVE TO DISK if a path is provided
         if save_path:
-            # We create a subfolder called "vector_store"
             vs_path = os.path.join(save_path, "vector_store")
             vector_store.save_local(vs_path)
-            print(f"✅ Memory saved to {vs_path}")
-            
         return vector_store
     except Exception as e:
-        print(f"Vector DB Error: {e}")
+        print(f"DB Error: {e}")
         return None
 
 def load_vector_db(load_path):
-    """
-    Loads a saved vector DB from disk.
-    """
     if not embeddings: return None
     vs_path = os.path.join(load_path, "vector_store")
-    
     if os.path.exists(vs_path):
         try:
-            # Allow dangerous deserialization is required for local files
-            vector_store = FAISS.load_local(vs_path, embeddings, allow_dangerous_deserialization=True)
-            print(f"✅ Memory loaded from {vs_path}")
-            return vector_store
-        except Exception as e:
-            print(f"Failed to load memory: {e}")
-            return None
+            return FAISS.load_local(vs_path, embeddings, allow_dangerous_deserialization=True)
+        except: return None
     return None
 
-def get_chat_response(query, vector_store):
-    if not llm or not vector_store: return "AI is not ready."
+def get_chat_response(query, vector_store, model_name="gpt-3.5-turbo"):
+    llm = get_llm(model_name)
+    if not llm or not vector_store: return "AI not ready."
     try:
         qa_chain = RetrievalQA.from_chain_type(
             llm=llm, chain_type="stuff", retriever=vector_store.as_retriever()
@@ -121,46 +174,14 @@ def get_chat_response(query, vector_store):
         response = qa_chain.invoke(query)
         return response["result"]
     except Exception as e:
-        return f"Chat Error: {str(e)}"
+        return f"Error: {str(e)}"
 
-def generate_quiz(text_chunk):
-    """Generates an interactive JSON quiz."""
-    if not llm: return []
-    try:
-        prompt = f"""
-        Create a mini-quiz with 3 multiple-choice questions based on this text.
-        Output ONLY raw JSON (no markdown). The format must be a list of objects:
-        [
-            {{
-                "question": "Question text here?",
-                "options": ["Option A", "Option B", "Option C", "Option D"],
-                "answer": "Option B"
-            }},
-            ...
-        ]
-        
-        TEXT: {text_chunk[:3000]}
-        """
-        response = llm.invoke(prompt)
-        content = response.content.replace("```json", "").replace("```", "").strip()
-        return json.loads(content)
-    except Exception as e:
-        print(f"Quiz Error: {e}")
-        return []
-
-# --- AUDIO FUNCTIONS ---
-
+# --- 4. AUDIO ---
 def transcribe_audio(audio_file):
     if not client: return None
     try:
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1", 
-            file=audio_file
-        )
-        return transcript.text
-    except Exception as e:
-        print(f"Whisper Error: {e}")
-        return None
+        return client.audio.transcriptions.create(model="whisper-1", file=audio_file).text
+    except: return None
 
 def text_to_speech(text):
     try:
@@ -169,6 +190,4 @@ def text_to_speech(text):
         tts.write_to_fp(mp3_fp)
         mp3_fp.seek(0)
         return mp3_fp
-    except Exception as e:
-        print(f"TTS Error: {e}")
-        return None
+    except: return None
