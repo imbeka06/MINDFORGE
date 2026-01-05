@@ -1,9 +1,9 @@
 streamlit
 openai
-langchain==0.1.0
-langchain-community==0.0.10
-langchain-openai==0.0.2
-langchain-core==0.1.10
+langchain
+langchain-community
+langchain-openai
+langchain-core
 faiss-cpu
 python-dotenv
 PyPDF2
@@ -13,3 +13,4 @@ tiktoken
 gtts
 streamlit-agraph
 youtube-transcript-api
+pydantic
