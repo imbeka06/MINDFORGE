@@ -1,44 +1,67 @@
-import pymupdf  # fitz
 import os
+from PyPDF2 import PdfReader
+import docx
 
-def extract_text_from_pdf(pdf_path):
-    """
-    Reads a PDF file and returns the full text content.
-    """
-    if not os.path.exists(pdf_path):
-        return ""
-        
-    doc = pymupdf.open(pdf_path)
-    text = ""
-    for page in doc:
-        text += page.get_text() + "\n"
-    return text
+def extract_text_from_pdf(file_path):
+    try:
+        reader = PdfReader(file_path)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+        return text
+    except Exception as e:
+        print(f"Error reading PDF: {e}")
+        return None
 
-def chunk_text(text, chunk_size=2000, overlap=200):
-    """
-    Splits large text into smaller chunks for the AI.
-    """
-    if not text:
-        return []
-        
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        start += chunk_size - overlap
-    return chunks
+def extract_text_from_docx(file_path):
+    try:
+        doc = docx.Document(file_path)
+        text = "\n".join([para.text for para in doc.paragraphs])
+        return text
+    except Exception as e:
+        print(f"Error reading DOCX: {e}")
+        return None
 
-def process_document(pdf_path):
+def extract_text_from_txt(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        print(f"Error reading TXT: {e}")
+        return None
+
+def process_document(file_path):
     """
-    Main function to handle a PDF upload.
+    Determines file type and extracts text accordingly.
     """
-    raw_text = extract_text_from_pdf(pdf_path)
-    chunks = chunk_text(raw_text)
+    ext = os.path.splitext(file_path)[1].lower()
+    
+    if ext == ".pdf":
+        full_text = extract_text_from_pdf(file_path)
+    elif ext == ".docx":
+        full_text = extract_text_from_docx(file_path)
+    elif ext == ".txt":
+        full_text = extract_text_from_txt(file_path)
+    else:
+        return None
+
+    if not full_text:
+        return None
+
+    # SMARTER SPLITTING (Recursive)
+    # This keeps sentences together instead of cutting them in half
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=2000,
+        chunk_overlap=200,
+        length_function=len
+    )
+    chunks = splitter.split_text(full_text)
     
     return {
-        "filename": os.path.basename(pdf_path),
-        "full_text": raw_text,
+        "filename": os.path.basename(file_path),
+        "full_text": full_text,
         "chunks": chunks,
         "chunk_count": len(chunks)
     }
