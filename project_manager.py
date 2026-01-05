@@ -2,7 +2,7 @@ import os
 import json
 import shutil
 import gc
-import time # Critical for the retry logic
+import time 
 
 DATA_DIR = "data"
 
@@ -39,15 +39,15 @@ def delete_project(project_name):
     # 1. Force Python to release file locks
     gc.collect()
     
-    # 2. Retry Logic (The Hammer)
+    # 2. Retry Logic
     if os.path.exists(folder_path):
-        for i in range(3): # Try 3 times
+        for i in range(3): 
             try:
                 shutil.rmtree(folder_path, ignore_errors=False)
-                return True # Success
+                return True 
             except Exception as e:
-                time.sleep(0.5) # Wait half a second
-                if i == 2: # Last try, force it
+                time.sleep(0.5) 
+                if i == 2: 
                     try:
                         shutil.rmtree(folder_path, ignore_errors=True)
                         return True
@@ -68,4 +68,12 @@ def create_project(project_name):
 def update_project_notes(project_name, new_notes):
     safe_name = "".join([c for c in project_name if c.isalpha() or c.isdigit() or c==' ']).strip()
     folder_path = os.path.join(DATA_DIR, safe_name)
-    with open(os.path.join(folder_path, "notes.json"), "w") as f: json.dump({"notes": new_notes}, f)
+    
+    # --- FIX STARTS HERE ---
+    # Safety Check: If the folder is missing (Ghost Unit), recreate it!
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    # --- FIX ENDS HERE ---
+
+    with open(os.path.join(folder_path, "notes.json"), "w") as f: 
+        json.dump({"notes": new_notes}, f)
