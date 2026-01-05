@@ -1,40 +1,46 @@
 import streamlit as st
 import os
+import json
 from dotenv import load_dotenv
 
 # --- 1. SETUP ---
 load_dotenv()
-
-# Import Custom Modules
 from project_manager import load_projects, create_project, update_project_notes
-from pdf_processor import process_document, extract_text_from_pdf
+from pdf_processor import process_document
 from video_processor import process_video
 from ai_engine import (
-    generate_summary, generate_mind_map, create_vector_db, load_vector_db,
-    get_chat_response, generate_quiz, 
+    generate_deep_summary, generate_mind_map, create_vector_db, load_vector_db,
+    get_chat_response, generate_quiz, search_arxiv_papers,
     transcribe_audio, text_to_speech
 )
 
 st.set_page_config(page_title="MindForge AI", page_icon="🧠", layout="wide")
 
 if not os.getenv("OPENAI_API_KEY"):
-    st.error("⚠️ OPENAI_API_KEY not found! Check your .env file.")
+    st.error("⚠️ OPENAI_API_KEY not found!")
     st.stop()
 
-# --- 2. THEME MANAGER ---
-def apply_custom_theme(theme_name):
-    common_dark_css = """
-        h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #E0E0E0 !important; }
-        .stTextInput > div > div > input, .stTextArea > div > div > textarea {
-            background-color: #2E303E !important; color: #FFFFFF !important; border: 1px solid #4A4D5A;
-        }
-        .stSelectbox > div > div > div { background-color: #2E303E !important; color: #FFFFFF !important; }
-        .stRadio > div { color: #E0E0E0 !important; }
-    """
+# --- 2. HELPER FUNCTIONS ---
+def save_chat_history(project_path, history):
+    """Saves chat history to a JSON file."""
+    file_path = os.path.join(project_path, "chat_history.json")
+    with open(file_path, "w") as f:
+        json.dump(history, f)
+
+def load_chat_history(project_path):
+    """Loads chat history from JSON."""
+    file_path = os.path.join(project_path, "chat_history.json")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return json.load(f)
+    return []
+
+def apply_theme(theme_name):
+    css = "h1,h2,h3,p,div,span{color:#E0E0E0!important} .stTextInput input,.stTextArea textarea{background-color:#2E303E!important;color:white!important}"
     if theme_name == "🌙 Dark Mode":
-        st.markdown(f"<style>.stApp {{ background-color: #0E1117; }} [data-testid='stSidebar'] {{ background-color: #171923; }} {common_dark_css}</style>", unsafe_allow_html=True)
+        st.markdown(f"<style>.stApp{{background-color:#0E1117}} {css}</style>", unsafe_allow_html=True)
     elif theme_name == "🌊 Ocean Blue":
-        st.markdown(f"<style>.stApp {{ background-color: #0F172A; }} [data-testid='stSidebar'] {{ background-color: #1E293B; }} h1, h2, h3 {{ color: #38BDF8 !important; }} .stButton>button {{ background-color: #3B82F6; color: white; }} {common_dark_css}</style>", unsafe_allow_html=True)
+        st.markdown(f"<style>.stApp{{background-color:#0F172A}} h1,h2{{color:#38BDF8!important}} {css}</style>", unsafe_allow_html=True)
 
 # --- 3. SESSION STATE ---
 if "current_project" not in st.session_state: st.session_state.current_project = None
@@ -50,184 +56,171 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/brain--v1.png", width=50)
     st.markdown("## MindForge AI")
     
-    # Theme
-    selected_theme = st.selectbox("🎨 Theme:", ["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"], index=["☀️ Light Mode", "🌙 Dark Mode", "🌊 Ocean Blue"].index(st.session_state.theme))
-    if selected_theme != st.session_state.theme:
-        st.session_state.theme = selected_theme
-        st.rerun()
-    apply_custom_theme(st.session_state.theme)
+    # Theme & Model
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state.theme = st.selectbox("🎨 Theme", ["☀️ Light", "🌙 Dark", "🌊 Ocean"], index=0)
+    with col2:
+        model_choice = st.selectbox("🧠 Model", ["gpt-3.5-turbo", "gpt-4-turbo"], index=0)
+    
+    apply_theme(st.session_state.theme)
     st.divider()
 
-    # Project Manager
+    # Project Selection
     projects = load_projects()
     project_list = list(projects.keys())
+    selected = st.selectbox("📂 Unit:", ["Select..."] + project_list)
     
-    selected = st.selectbox("📂 Select Unit:", ["Select..."] + project_list, index=0 if not st.session_state.current_project else project_list.index(st.session_state.current_project) + 1 if st.session_state.current_project in project_list else 0)
-    
-    # --- INTELLIGENT SWITCHING (MEMORY LOAD) ---
+    # INTELLIGENT LOAD (MEMORY + CHAT HISTORY)
     if selected != "Select..." and selected != st.session_state.current_project:
         st.session_state.current_project = selected
-        st.session_state.chat_history = []
-        st.session_state.last_summary = None
-        st.session_state.last_mm = None
-        st.session_state.last_quiz = None
+        path = projects[selected]['path']
         
-        # 🧠 TRY TO LOAD MEMORY
-        project_path = projects[selected]['path']
-        loaded_vs = load_vector_db(project_path)
-        if loaded_vs:
-            st.session_state.vector_store = loaded_vs
-            st.toast(f"🧠 Memory loaded for {selected}!")
-        else:
-            st.session_state.vector_store = None
+        # Load Brain
+        loaded_vs = load_vector_db(path)
+        st.session_state.vector_store = loaded_vs if loaded_vs else None
+        
+        # Load History
+        st.session_state.chat_history = load_chat_history(path)
+        st.toast(f"Loaded {selected}")
         st.rerun()
 
     # Create Unit
-    with st.form("create_unit_form"):
-        new_name = st.text_input("New Unit Name")
-        if st.form_submit_button("➕ Create Unit") and new_name:
-            create_project(new_name)
-            st.success(f"Created {new_name}!")
+    with st.form("new_unit"):
+        if st.form_submit_button("➕ New Unit") and (name := st.text_input("Name")):
+            create_project(name)
             st.rerun()
-    st.divider()
-
+    
     # Music
-    st.markdown("### 🎧 Study Playlist")
-    music_choice = st.radio(
-        "Vibe:", 
-        ["Off", "☕ Lofi Girl", "🎻 Dark Academia", "🎷 60s Jazz/Soul", "🥀 Lana Del Rey", "🖤 Orgavsm"], 
-        index=0
-    )
-    
-    if music_choice == "☕ Lofi Girl": st.video("https://www.youtube.com/watch?v=7ccH8u8fj8Y")
-    elif music_choice == "🎻 Dark Academia": st.video("https://www.youtube.com/watch?v=D9km3yXmR8k")
-    elif music_choice == "🎷 60s Jazz/Soul": st.video("https://www.youtube.com/watch?v=e2A3_111fwc")
-    elif music_choice == "🥀 Lana Del Rey": st.video("https://www.youtube.com/watch?v=5XJNg8x89yo")
-    elif music_choice == "🖤 Orgavsm": st.video("https://www.youtube.com/watch?v=ZHLL7dPIxPw")
-    
     st.divider()
+    music = st.radio("🎧 Music", ["Off", "☕ Lofi", "🎻 Dark", "🎷 Jazz", "🥀 Lana", "🖤 Orgavsm"])
+    links = {
+        "☕ Lofi": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
+        "🎻 Dark": "https://www.youtube.com/watch?v=D9km3yXmR8k",
+        "🎷 Jazz": "https://www.youtube.com/watch?v=e2A3_111fwc",
+        "🥀 Lana": "https://www.youtube.com/watch?v=5XJNg8x89yo",
+        "🖤 Orgavsm": "https://www.youtube.com/watch?v=ZHLL7dPIxPw"
+    }
+    if music != "Off": st.video(links[music])
     
-    st.markdown("<div style='text-align: center; opacity: 0.7; font-size: 0.8em;'>Architect and Developer<br><strong>IMBEKA MUSA</strong></div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center;font-size:0.8em;opacity:0.7'>Dev: IMBEKA MUSA</div>", unsafe_allow_html=True)
 
-# --- 5. MAIN CONTENT ---
+# --- 5. MAIN APP ---
 if st.session_state.current_project:
-    project_data = projects[st.session_state.current_project]
+    p_data = projects[st.session_state.current_project]
     st.title(f"📚 {st.session_state.current_project}")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📂 Upload", "📝 Notes", "🗺️ Mind Map", "💬 Chat (Voice)", "🎓 Quiz"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📂 Upload", "📝 Notes", "🗺️ Map", "💬 Chat", "🎓 Quiz", "🔍 Research"])
 
-    # --- TAB 1: FILES ---
+    # TAB 1: UPLOAD (Updated for Word/Txt)
     with tab1:
-        st.info("Upload materials to generate knowledge.")
-        upload_type = st.radio("Source:", ["📄 PDF Document", "🎥 YouTube Video"], horizontal=True)
+        st.info(f"Using {model_choice} for analysis.")
+        src = st.radio("Type:", ["📄 File (PDF/DOCX/TXT)", "🎥 YouTube"], horizontal=True)
         doc_data = None
         
-        if upload_type == "📄 PDF Document":
-            uploaded_file = st.file_uploader("Upload PDF", type="pdf")
-            if uploaded_file:
-                save_path = os.path.join(project_data['path'], uploaded_file.name)
-                with open(save_path, "wb") as f: f.write(uploaded_file.getbuffer())
-                st.success(f"Saved: {uploaded_file.name}")
-                if st.button("🧠 Analyze PDF"):
-                    with st.spinner("Processing..."): doc_data = process_document(save_path)
-
-        elif upload_type == "🎥 YouTube Video":
-            video_url = st.text_input("Paste Link:")
-            if video_url and st.button("🧠 Analyze Video"):
-                with st.spinner("Fetching Transcript..."):
-                    doc_data = process_video(video_url)
-                    if not doc_data: st.error("No captions found.")
+        if "File" in src:
+            f = st.file_uploader("Upload", type=["pdf", "docx", "txt"])
+            if f:
+                path = os.path.join(p_data['path'], f.name)
+                with open(path, "wb") as w: w.write(f.getbuffer())
+                st.success(f"Saved: {f.name}")
+                if st.button("🧠 Deep Analyze"):
+                    with st.spinner("Reading multiple pages..."):
+                        doc_data = process_document(path)
+        else:
+            url = st.text_input("Link:")
+            if url and st.button("Analyze Video"):
+                with st.spinner("Transcribing..."):
+                    doc_data = process_video(url)
 
         if doc_data:
-            summary = generate_summary(doc_data['chunks'][0])
-            mm_data = generate_mind_map(doc_data['chunks'][0])
-            # 🧠 CREATE AND SAVE MEMORY HERE
-            vector_store = create_vector_db(doc_data['chunks'], save_path=project_data['path'])
+            # Generate Assets
+            summary = generate_deep_summary(doc_data['chunks'], model_choice)
+            mm = generate_mind_map(doc_data['chunks'][0], model_choice)
+            vs = create_vector_db(doc_data['chunks'], p_data['path'])
             
-            st.session_state.vector_store = vector_store
+            st.session_state.vector_store = vs
             st.session_state.last_summary = summary
-            st.session_state.last_mm = mm_data
-            st.success("Analysis Complete! Memory Saved.")
+            st.session_state.last_mm = mm
+            st.success("Deep Analysis Complete!")
 
-    # --- TAB 2: NOTES ---
+    # TAB 2: NOTES
     with tab2:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Scratchpad")
-            notes = st.text_area("Notes", value=project_data.get("notes", ""), height=400)
-            if st.button("Save Notes"):
-                update_project_notes(st.session_state.current_project, notes)
-                st.toast("Saved!")
-        with col2:
-            st.subheader("AI Summary")
+        c1, c2 = st.columns(2)
+        with c1:
+            notes = st.text_area("Scratchpad", value=p_data.get("notes",""), height=400)
+            if st.button("Save Notes"): update_project_notes(st.session_state.current_project, notes)
+        with c2:
+            st.subheader("Executive Report")
             if st.session_state.last_summary: st.markdown(st.session_state.last_summary)
-            else: st.info("No analysis yet.")
 
-    # --- TAB 3: MIND MAP ---
+    # TAB 3: MAP
     with tab3:
         if st.session_state.last_mm:
             from streamlit_agraph import agraph, Node, Edge, Config
-            nodes, edges, seen_ids = [], [], set()
-            data = st.session_state.last_mm
-            if "nodes" in data:
-                for node in data["nodes"]:
-                    if node["id"] not in seen_ids:
-                        nodes.append(Node(id=node["id"], label=node["id"], size=25, shape="dot", color="#FF4B4B"))
-                        seen_ids.add(node["id"])
-            if "edges" in data:
-                for edge in data["edges"]:
-                    if edge["from"] in seen_ids and edge["to"] in seen_ids:
-                        edges.append(Edge(source=edge["from"], target=edge["to"], color="#31333F"))
-            config = Config(width=None, height=500, directed=True, physics=True, hierarchical=False)
-            if nodes: agraph(nodes=nodes, edges=edges, config=config)
-        else: st.info("Analyze content to see map.")
+            nodes, edges, seen = [], [], set()
+            for n in st.session_state.last_mm.get("nodes", []):
+                if n["id"] not in seen:
+                    nodes.append(Node(id=n["id"], label=n["id"], size=20, color="#FF4B4B"))
+                    seen.add(n["id"])
+            for e in st.session_state.last_mm.get("edges", []):
+                if e["from"] in seen and e["to"] in seen:
+                    edges.append(Edge(source=e["from"], target=e["to"]))
+            agraph(nodes, edges, Config(height=500, directed=True, physics=True))
 
-    # --- TAB 4: CHAT ---
+    # TAB 4: CHAT (PERSISTENT)
     with tab4:
-        audio_val = st.audio_input("🎙️ Speak Question")
-        if audio_val:
-            transcription = transcribe_audio(audio_val)
-            prompt = transcription if transcription else None
-        else:
-            prompt = st.chat_input("Type question...")
+        # Voice Input
+        audio = st.audio_input("🎙️ Voice")
+        q = transcribe_audio(audio) if audio else st.chat_input("Type...")
 
-        if prompt and st.session_state.vector_store:
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
+        if q and st.session_state.vector_store:
+            st.session_state.chat_history.append({"role": "user", "content": q})
+            
             with st.spinner("Thinking..."):
-                response_text = get_chat_response(prompt, st.session_state.vector_store)
-            st.session_state.chat_history.append({"role": "assistant", "content": response_text})
-            audio_response = text_to_speech(response_text)
-        
-        for i, msg in enumerate(st.session_state.chat_history):
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-                if msg["role"] == "assistant" and i == len(st.session_state.chat_history) - 1 and 'audio_response' in locals() and audio_response:
-                     st.audio(audio_response, format="audio/mp3")
+                ans = get_chat_response(q, st.session_state.vector_store, model_choice)
+            
+            st.session_state.chat_history.append({"role": "assistant", "content": ans})
+            
+            # SAVE HISTORY TO DISK
+            save_chat_history(p_data['path'], st.session_state.chat_history)
+            
+            # TTS
+            audio_response = text_to_speech(ans)
+            if audio_response: st.audio(audio_response, format="audio/mp3")
 
-    # --- TAB 5: INTERACTIVE QUIZ ---
+        # Display History
+        for msg in st.session_state.chat_history:
+            st.chat_message(msg["role"]).write(msg["content"])
+
+    # TAB 5: QUIZ
     with tab5:
-        if st.button("Generate New Quiz"):
-            with st.spinner("Drafting..."):
-                files = [f for f in os.listdir(project_data['path']) if f.endswith('.pdf')]
-                if files:
-                    doc_path = os.path.join(project_data['path'], files[0])
-                    full_text = extract_text_from_pdf(doc_path)
-                    st.session_state.last_quiz = generate_quiz(full_text[:4000])
-                else: st.warning("Upload a PDF first.")
-
-        # RENDER INTERACTIVE QUIZ
-        if st.session_state.last_quiz and isinstance(st.session_state.last_quiz, list):
+        if st.button("New Quiz"):
+            # Use cached summary text context if file logic gets complex
+            if st.session_state.last_summary:
+                st.session_state.last_quiz = generate_quiz(st.session_state.last_summary, model_choice)
+        
+        if st.session_state.last_quiz:
             score = 0
             for i, q in enumerate(st.session_state.last_quiz):
-                st.markdown(f"**Q{i+1}: {q['question']}**")
-                user_choice = st.radio(f"Select Answer:", q['options'], key=f"q_{i}")
-                
-                if st.button(f"Check Answer {i+1}", key=f"btn_{i}"):
-                    if user_choice == q['answer']:
-                        st.success("Correct! 🎉")
-                        score += 1
-                    else:
-                        st.error(f"Wrong. Correct answer: {q['answer']}")
+                st.write(f"**Q{i+1}: {q['question']}**")
+                ans = st.radio(f"Options {i}", q['options'], key=f"q{i}")
+                if st.button(f"Check {i+1}", key=f"b{i}"):
+                    if ans == q['answer']: st.success("Correct!")
+                    else: st.error(f"Wrong. It was {q['answer']}")
                 st.divider()
+
+    # TAB 6: RESEARCH (NEW)
+    with tab6:
+        st.subheader("🔎 Academic Search (ArXiv)")
+        topic = st.text_input("Enter research topic:")
+        if st.button("Search Papers"):
+            with st.spinner("Searching ArXiv database..."):
+                results = search_arxiv_papers(topic)
+                for r in results:
+                    with st.expander(f"📄 {r['title']} ({r['published']})"):
+                        st.write(f"**Abstract:** {r['summary']}")
+                        st.markdown(f"[📥 Download PDF]({r['pdf_url']})")
+
 else:
-    st.info("👈 Select or Create a Unit to begin.")
+    st.info("👈 Open a Unit to begin.")
