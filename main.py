@@ -3,7 +3,7 @@ import os
 import json
 from dotenv import load_dotenv
 
-# --- 1. SETUP & CONFIGURATION ---
+#  1. SETUP & CONFIGURATION 
 load_dotenv()
 
 # Import Custom Modules
@@ -24,7 +24,7 @@ if not os.getenv("OPENAI_API_KEY"):
     st.error("⚠️ OPENAI_API_KEY not found! Please check your .env file settings on Cloud.")
     st.stop()
 
-# --- 2. HELPER FUNCTIONS ---
+#  2. HELPER FUNCTIONS 
 def save_chat_history(project_path, history):
     file_path = os.path.join(project_path, "chat_history.json")
     with open(file_path, "w") as f:
@@ -37,7 +37,7 @@ def load_chat_history(project_path):
             return json.load(f)
     return []
 
-# --- 3. THEME MANAGER ---
+#  3. THEME MANAGER 
 def apply_theme(theme_name):
     base_css = """
     <style>
@@ -53,7 +53,7 @@ def apply_theme(theme_name):
     elif theme_name == "🌊 Ocean Blue":
         st.markdown(f"<style>.stApp {{ background-color: #0F172A; }} [data-testid='stSidebar'] {{ background-color: #1E293B; }} h1, h2 {{ color: #38BDF8 !important; }} .stButton > button {{ background-color: #3B82F6; color: white; border: none; font-weight: bold; }}</style>{base_css}", unsafe_allow_html=True)
 
-# --- 4. SESSION STATE ---
+#  4. SESSION STATE 
 if "current_project" not in st.session_state: st.session_state.current_project = None
 if "vector_store" not in st.session_state: st.session_state.vector_store = None
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
@@ -63,7 +63,7 @@ if "last_quiz" not in st.session_state: st.session_state.last_quiz = None
 if "theme" not in st.session_state: st.session_state.theme = "☀️ Light Mode"
 if "model_choice" not in st.session_state: st.session_state.model_choice = "gpt-3.5-turbo"
 
-# --- 5. SIDEBAR ---
+#  5. SIDEBAR 
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/brain--v1.png", width=50)
     st.markdown("## MindForge AI")
@@ -144,7 +144,7 @@ with st.sidebar:
     st.divider()
     st.markdown("""<div style="text-align: center; opacity: 0.7; font-size: 0.8em; margin-top: 20px;">Architect and Developer<br><strong>IMBEKA MUSA</strong></div>""", unsafe_allow_html=True)
 
-# --- 6. MAIN CONTENT ---
+#  6. MAIN CONTENT 
 if st.session_state.current_project and st.session_state.current_project in projects:
     project_data = projects[st.session_state.current_project]
     st.title(f"📚 {st.session_state.current_project}")
