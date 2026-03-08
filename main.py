@@ -40,18 +40,43 @@ def load_chat_history(project_path):
 #  3. THEME MANAGER 
 def apply_theme(theme_name):
     base_css = """
-    <style>
+        [data-testid="stHeader"] { background-color: rgba(0,0,0,0); }
+    """
+    
+    if theme_name == "☀️ Light Mode":
+        theme_css = """
+        .stApp { background-color: #F5F5F5; }
+        [data-testid='stSidebar'] { background-color: #FFFFFF; }
+        h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #1A1A1A !important; }
+        .stTextInput > div > div > input { background-color: #FFFFFF !important; color: #1A1A1A !important; border: 1px solid #CCCCCC; }
+        .stTextArea > div > div > textarea { background-color: #FFFFFF !important; color: #1A1A1A !important; border: 1px solid #CCCCCC; }
+        .stSelectbox > div > div > div { background-color: #FFFFFF !important; color: #1A1A1A !important; border: 1px solid #CCCCCC; }
+        """
+    elif theme_name == "🌙 Dark Mode":
+        theme_css = """
+        .stApp { background-color: #0E1117; }
+        [data-testid='stSidebar'] { background-color: #171923; }
         h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #E0E0E0 !important; }
         .stTextInput > div > div > input { background-color: #2E303E !important; color: #FFFFFF !important; border: 1px solid #4A4D5A; }
         .stTextArea > div > div > textarea { background-color: #2E303E !important; color: #FFFFFF !important; border: 1px solid #4A4D5A; }
         .stSelectbox > div > div > div { background-color: #2E303E !important; color: #FFFFFF !important; }
-        [data-testid="stHeader"] { background-color: rgba(0,0,0,0); }
-    </style>
-    """
-    if theme_name == "🌙 Dark Mode":
-        st.markdown(f"<style>.stApp {{ background-color: #0E1117; }} [data-testid='stSidebar'] {{ background-color: #171923; }}</style>{base_css}", unsafe_allow_html=True)
+        """
     elif theme_name == "🌊 Ocean Blue":
-        st.markdown(f"<style>.stApp {{ background-color: #0F172A; }} [data-testid='stSidebar'] {{ background-color: #1E293B; }} h1, h2 {{ color: #38BDF8 !important; }} .stButton > button {{ background-color: #3B82F6; color: white; border: none; font-weight: bold; }}</style>{base_css}", unsafe_allow_html=True)
+        theme_css = """
+        .stApp { background-color: #0F172A; }
+        [data-testid='stSidebar'] { background-color: #1E293B; }
+        h1, h2 { color: #38BDF8 !important; }
+        h3, h4, h5, h6, p, li, span, div, label { color: #E0E0E0 !important; }
+        .stButton > button { background-color: #3B82F6; color: white; border: none; font-weight: bold; }
+        .stTextInput > div > div > input { background-color: #0F172A !important; color: #E0E0E0 !important; border: 1px solid #3B82F6; }
+        .stTextArea > div > div > textarea { background-color: #0F172A !important; color: #E0E0E0 !important; border: 1px solid #3B82F6; }
+        .stSelectbox > div > div > div { background-color: #0F172A !important; color: #E0E0E0 !important; }
+        """
+    else:
+        theme_css = ""
+    
+    full_css = f"<style>{theme_css}{base_css}</style>"
+    st.markdown(full_css, unsafe_allow_html=True)
 
 #  4. SESSION STATE 
 if "current_project" not in st.session_state: st.session_state.current_project = None
