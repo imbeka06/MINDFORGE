@@ -17,7 +17,7 @@ load_dotenv()
 embeddings = None
 client = None 
 
-# --- INITIALIZATION ---
+
 def get_llm(model_name="gpt-3.5-turbo"):
     """
     Returns the LLM based on user selection.
@@ -35,7 +35,6 @@ try:
 except Exception as e:
     print(f"Startup Error: {e}")
 
-# --- 1. DEEP ANALYSIS FUNCTIONS ---
 
 def generate_deep_summary(chunks, model_name="gpt-3.5-turbo"):
     """
@@ -108,7 +107,7 @@ def generate_quiz(text_chunk, model_name="gpt-3.5-turbo"):
     except:
         return []
 
-# --- 2. RESEARCH ENGINE (ARXIV) ---
+#  2. RESEARCH ENGINE (ARXIV) 
 
 def search_arxiv_papers(topic):
     """
@@ -135,7 +134,7 @@ def search_arxiv_papers(topic):
         print(f"ArXiv Error: {e}")
         return []
 
-# --- 3. MEMORY & CHAT ---
+# 3. MEMORY & CHAT 
 
 def create_vector_db(chunks, save_path=None):
     if not embeddings: return None
@@ -171,7 +170,7 @@ def get_chat_response(query, vector_store, model_name="gpt-3.5-turbo"):
     except Exception as e:
         return f"Error: {str(e)}"
 
-# --- 4. AUDIO ---
+#  4. AUDIO 
 def transcribe_audio(audio_file):
     if not client: return None
     try:

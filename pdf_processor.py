@@ -49,7 +49,7 @@ def process_document(file_path):
         return None
 
     # SMARTER SPLITTING (Recursive)
-    # This keeps sentences together instead of cutting them in half
+   
     from langchain.text_splitter import RecursiveCharacterTextSplitter
     
     splitter = RecursiveCharacterTextSplitter(

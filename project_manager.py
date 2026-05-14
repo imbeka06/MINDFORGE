@@ -69,11 +69,11 @@ def update_project_notes(project_name, new_notes):
     safe_name = "".join([c for c in project_name if c.isalpha() or c.isdigit() or c==' ']).strip()
     folder_path = os.path.join(DATA_DIR, safe_name)
     
-    # --- FIX STARTS HERE ---
-    # Safety Check: If the folder is missing (Ghost Unit), recreate it!
+
+    #  Check If the folder is missing , recreate it!
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
-    # --- FIX ENDS HERE ---
+    
 
     with open(os.path.join(folder_path, "notes.json"), "w") as f: 
         json.dump({"notes": new_notes}, f)
