@@ -10,6 +10,17 @@ load_dotenv()
 from project_manager import load_projects, create_project, update_project_notes, delete_project
 from pdf_processor import process_document
 from video_processor import process_video
+from spotify_processor import (
+    spotify_is_configured,
+    build_auth_manager,
+    get_spotify_client,
+    get_available_devices,
+    play_track_by_query,
+    pause_playback,
+    resume_playback,
+    next_track,
+    previous_track,
+)
 from ai_engine import (
     generate_deep_summary, generate_mind_map, create_vector_db, load_vector_db,
     get_chat_response, generate_quiz, search_arxiv_papers,
@@ -129,17 +140,99 @@ with st.sidebar:
                 st.rerun()
 
     st.divider()
-    st.markdown("### 🎧 Study Playlist")
-    # UNIQUE KEY 7: music_player_radio
-    music_vibe = st.radio("Select Vibe:", ["Off", "☕ Lofi Girl", "🎻 Dark Academia", "🎷 60s Jazz/Soul", "🥀 Lana Del Rey", "🖤 Orgavsm"], key="music_player_radio")
-    music_links = {
-        "☕ Lofi Girl": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
-        "🎻 Dark Academia": "https://www.youtube.com/watch?v=D9km3yXmR8k",
-        "🎷 60s Jazz/Soul": "https://www.youtube.com/watch?v=e2A3_111fwc",
-        "🥀 Lana Del Rey": "https://www.youtube.com/watch?v=5XJNg8x89yo",
-        "🖤 Orgavsm": "https://www.youtube.com/watch?v=ZHLL7dPIxPw"
-    }
-    if music_vibe != "Off": st.video(music_links[music_vibe])
+    st.markdown("### 🎧 Study Music")
+    # UNIQUE KEY 7: music_source_radio
+    music_source = st.radio("Select Source:", ["Spotify API", "YouTube Vibes"], key="music_source_radio")
+
+    if music_source == "Spotify API":
+        if not spotify_is_configured():
+            st.warning("Add SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET in .env to enable Spotify.")
+            st.caption("Optional: set SPOTIPY_REDIRECT_URI (default is http://localhost:8501)")
+        else:
+            cache_path = os.path.join("data", ".spotify_cache")
+            auth_manager = build_auth_manager(cache_path=cache_path)
+            auth_code = st.query_params.get("code")
+            if isinstance(auth_code, list):
+                auth_code = auth_code[0]
+
+            sp_client, sp_error = get_spotify_client(auth_manager, auth_code=auth_code)
+
+            if auth_code:
+                st.query_params.clear()
+
+            if not sp_client:
+                st.link_button("🔐 Connect Spotify", auth_manager.get_authorize_url(), use_container_width=True)
+                if sp_error:
+                    st.caption(sp_error)
+            else:
+                try:
+                    profile = sp_client.current_user()
+                    st.caption(f"Connected as {profile.get('display_name', 'Spotify User')}")
+                except Exception:
+                    st.caption("Connected to Spotify")
+
+                devices = get_available_devices(sp_client)
+                selected_device_id = None
+                if devices:
+                    label_to_id = {
+                        f"{d['name']} ({d['type']}){' • Active' if d.get('is_active') else ''}": d["id"]
+                        for d in devices
+                    }
+                    # UNIQUE KEY 8: spotify_device_selector
+                    selected_device = st.selectbox("Playback Device", list(label_to_id.keys()), key="spotify_device_selector")
+                    selected_device_id = label_to_id[selected_device]
+                else:
+                    st.info("Open Spotify on your phone/desktop/web player first, then refresh.")
+
+                # UNIQUE KEY 9: spotify_track_query
+                track_query = st.text_input("Search track/artist", key="spotify_track_query")
+
+                # UNIQUE KEY 10: btn_spotify_play
+                if st.button("▶️ Play From Search", key="btn_spotify_play", use_container_width=True):
+                    if not track_query.strip():
+                        st.warning("Type a track or artist first.")
+                    elif not selected_device_id:
+                        st.warning("Select an active Spotify device first.")
+                    else:
+                        ok, msg = play_track_by_query(sp_client, track_query.strip(), device_id=selected_device_id)
+                        if ok:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    # UNIQUE KEY 11: btn_spotify_prev
+                    if st.button("⏮", key="btn_spotify_prev"):
+                        ok, msg = previous_track(sp_client, device_id=selected_device_id)
+                        st.success(msg) if ok else st.error(msg)
+                with c2:
+                    # UNIQUE KEY 12: btn_spotify_pause
+                    if st.button("⏸", key="btn_spotify_pause"):
+                        ok, msg = pause_playback(sp_client, device_id=selected_device_id)
+                        st.success(msg) if ok else st.error(msg)
+                with c3:
+                    # UNIQUE KEY 13: btn_spotify_resume
+                    if st.button("▶", key="btn_spotify_resume"):
+                        ok, msg = resume_playback(sp_client, device_id=selected_device_id)
+                        st.success(msg) if ok else st.error(msg)
+                with c4:
+                    # UNIQUE KEY 14: btn_spotify_next
+                    if st.button("⏭", key="btn_spotify_next"):
+                        ok, msg = next_track(sp_client, device_id=selected_device_id)
+                        st.success(msg) if ok else st.error(msg)
+    else:
+        # UNIQUE KEY 15: music_player_radio
+        music_vibe = st.radio("Select Vibe:", ["Off", "☕ Lofi Girl", "🎻 Dark Academia", "🎷 60s Jazz/Soul", "🥀 Lana Del Rey", "🖤 Orgavsm"], key="music_player_radio")
+        music_links = {
+            "☕ Lofi Girl": "https://www.youtube.com/watch?v=7ccH8u8fj8Y",
+            "🎻 Dark Academia": "https://www.youtube.com/watch?v=D9km3yXmR8k",
+            "🎷 60s Jazz/Soul": "https://www.youtube.com/watch?v=e2A3_111fwc",
+            "🥀 Lana Del Rey": "https://www.youtube.com/watch?v=5XJNg8x89yo",
+            "🖤 Orgavsm": "https://www.youtube.com/watch?v=ZHLL7dPIxPw"
+        }
+        if music_vibe != "Off":
+            st.video(music_links[music_vibe])
 
     st.divider()
     st.markdown("""<div style="text-align: center; opacity: 0.7; font-size: 0.8em; margin-top: 20px;">Architect and Developer<br><strong>IMBEKA MUSA</strong></div>""", unsafe_allow_html=True)

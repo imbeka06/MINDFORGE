@@ -14,3 +14,4 @@ gtts
 streamlit-agraph
 youtube-transcript-api
 pydantic
+spotipy
