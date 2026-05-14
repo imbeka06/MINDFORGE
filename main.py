@@ -171,8 +171,9 @@ with st.sidebar:
 
     if music_source == "Spotify API":
         if not spotify_is_configured():
-            st.warning("Add SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET in .env to enable Spotify.")
-            st.caption("Optional: set SPOTIPY_REDIRECT_URI (default is http://localhost:8501)")
+            st.warning("Spotify is not configured for this deployment yet.")
+            st.caption("Set SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET in Streamlit Cloud Secrets (or .env locally).")
+            st.caption("Set SPOTIPY_REDIRECT_URI to your app URL on cloud, or use http://127.0.0.1:8501 locally.")
         else:
             cache_path = os.path.join("data", ".spotify_cache")
             auth_manager = build_auth_manager(cache_path=cache_path)

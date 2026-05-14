@@ -8,15 +8,32 @@ from spotipy.oauth2 import SpotifyOAuth
 SPOTIFY_SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
 
 
+def _get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    env_value = os.getenv(key)
+    if env_value:
+        return env_value
+
+    try:
+        import streamlit as st
+
+        secret_value = st.secrets.get(key)
+        if secret_value:
+            return str(secret_value)
+    except Exception:
+        pass
+
+    return default
+
+
 def spotify_is_configured() -> bool:
-    return bool(os.getenv("SPOTIPY_CLIENT_ID") and os.getenv("SPOTIPY_CLIENT_SECRET"))
+    return bool(_get_setting("SPOTIPY_CLIENT_ID") and _get_setting("SPOTIPY_CLIENT_SECRET"))
 
 
 def build_auth_manager(cache_path: str) -> SpotifyOAuth:
-    redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8501")
+    redirect_uri = _get_setting("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8501")
     return SpotifyOAuth(
-        client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-        client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+        client_id=_get_setting("SPOTIPY_CLIENT_ID"),
+        client_secret=_get_setting("SPOTIPY_CLIENT_SECRET"),
         redirect_uri=redirect_uri,
         scope=SPOTIFY_SCOPES,
         cache_path=cache_path,
