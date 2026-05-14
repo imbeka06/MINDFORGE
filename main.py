@@ -175,8 +175,7 @@ with st.sidebar:
             st.caption("Set SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET in Streamlit Cloud Secrets (or .env locally).")
             st.caption("Set SPOTIPY_REDIRECT_URI to your app URL on cloud, or use http://127.0.0.1:8501 locally.")
         else:
-            cache_path = os.path.join("data", ".spotify_cache")
-            auth_manager = build_auth_manager(cache_path=cache_path)
+            auth_manager = build_auth_manager(session_cache_key="spotify_token_info")
             auth_code = st.query_params.get("code")
             if isinstance(auth_code, list):
                 auth_code = auth_code[0]

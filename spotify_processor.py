@@ -2,10 +2,32 @@ import os
 from typing import Dict, List, Optional, Tuple
 
 import spotipy
+from spotipy.cache_handler import CacheHandler
 from spotipy.oauth2 import SpotifyOAuth
 
 
 SPOTIFY_SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
+
+
+class _StreamlitSessionCacheHandler(CacheHandler):
+    def __init__(self, session_key: str = "spotify_token_info"):
+        self.session_key = session_key
+
+    def get_cached_token(self):
+        try:
+            import streamlit as st
+
+            return st.session_state.get(self.session_key)
+        except Exception:
+            return None
+
+    def save_token_to_cache(self, token_info):
+        try:
+            import streamlit as st
+
+            st.session_state[self.session_key] = token_info
+        except Exception:
+            pass
 
 
 def _get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -29,14 +51,25 @@ def spotify_is_configured() -> bool:
     return bool(_get_setting("SPOTIPY_CLIENT_ID") and _get_setting("SPOTIPY_CLIENT_SECRET"))
 
 
-def build_auth_manager(cache_path: str) -> SpotifyOAuth:
+def build_auth_manager(cache_path: Optional[str] = None, session_cache_key: str = "spotify_token_info") -> SpotifyOAuth:
     redirect_uri = _get_setting("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8501")
+
+    cache_handler: Optional[CacheHandler] = None
+    try:
+        import streamlit as st
+
+        if hasattr(st, "session_state"):
+            cache_handler = _StreamlitSessionCacheHandler(session_key=session_cache_key)
+    except Exception:
+        cache_handler = None
+
     return SpotifyOAuth(
         client_id=_get_setting("SPOTIPY_CLIENT_ID"),
         client_secret=_get_setting("SPOTIPY_CLIENT_SECRET"),
         redirect_uri=redirect_uri,
         scope=SPOTIFY_SCOPES,
-        cache_path=cache_path,
+        cache_handler=cache_handler,
+        cache_path=cache_path if not cache_handler else None,
         show_dialog=False,
         open_browser=False,
     )
