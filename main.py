@@ -181,13 +181,16 @@ with st.sidebar:
             if isinstance(auth_code, list):
                 auth_code = auth_code[0]
 
+            st.link_button("🔐 Connect / Switch Spotify Account", auth_manager.get_authorize_url(), use_container_width=True)
+            st.caption("Use this button anytime to connect or switch your Spotify account.")
+
             sp_client, sp_error = get_spotify_client(auth_manager, auth_code=auth_code)
 
             if auth_code:
                 st.query_params.clear()
 
             if not sp_client:
-                st.link_button("🔐 Connect Spotify", auth_manager.get_authorize_url(), use_container_width=True)
+                st.info("After connecting, return here and the playback controls will appear.")
                 if sp_error:
                     st.caption(sp_error)
             else:
